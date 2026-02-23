@@ -49,32 +49,34 @@ class StockService: ObservableObject {
 
     private func fetchSingleQuote(symbol: String) async {
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1m&range=1d&includePrePost=true") else { return }
+
+        // Two requests: daily for reliable price, intraday for extended hours
+        guard let dailyUrl = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=2d"),
+              let intraUrl = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1m&range=5d&includePrePost=true") else { return }
 
         do {
-            let (data, _) = try await session.data(from: url)
-            let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
+            // Fetch both in parallel
+            async let dailyFetch = session.data(from: dailyUrl)
+            async let intraFetch = session.data(from: intraUrl)
 
-            guard let result = response.chart.result?.first else { return }
-            let meta = result.meta
+            let (dailyData, _) = try await dailyFetch
+            let dailyResponse = try JSONDecoder().decode(YahooChartResponse.self, from: dailyData)
+            guard let dailyResult = dailyResponse.chart.result?.first else { return }
+            let meta = dailyResult.meta
 
             let price = meta.regularMarketPrice
             let previousClose = meta.chartPreviousClose ?? price
             let change = price - previousClose
             let changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0
 
-            // Determine market state and extended hours prices from intraday data
+            // Determine market state from current trading period
             let now = Date().timeIntervalSince1970
-            let timestamps = result.timestamp ?? []
-            let closes = result.indicators?.quote?.first?.close ?? []
             let ctp = meta.currentTradingPeriod
-
             let regEnd = ctp?.regular?.end ?? 0
             let regStart = ctp?.regular?.start ?? 0
             let preStart = ctp?.pre?.start ?? 0
             let postEnd = ctp?.post?.end ?? 0
 
-            // Determine market state from trading periods
             let marketState: String
             if now >= Double(regStart) && now < Double(regEnd) {
                 marketState = "REGULAR"
@@ -86,21 +88,36 @@ class StockService: ObservableObject {
                 marketState = "CLOSED"
             }
 
-            // Extract last post-market price (timestamps after regular end)
-            var postMarketPrice: Double? = nil
-            for i in stride(from: timestamps.count - 1, through: 0, by: -1) {
-                if timestamps[i] >= regEnd, i < closes.count, let c = closes[i] {
-                    postMarketPrice = c
-                    break
-                }
-            }
-
-            // Extract last pre-market price (timestamps before regular start)
+            // Extract extended hours from intraday data
             var preMarketPrice: Double? = nil
-            for i in stride(from: timestamps.count - 1, through: 0, by: -1) {
-                if timestamps[i] < regStart, i < closes.count, let c = closes[i] {
-                    preMarketPrice = c
-                    break
+            var postMarketPrice: Double? = nil
+
+            if let (intraData, _) = try? await intraFetch,
+               let intraResponse = try? JSONDecoder().decode(YahooChartResponse.self, from: intraData),
+               let intraResult = intraResponse.chart.result?.first {
+
+                let timestamps = intraResult.timestamp ?? []
+                let closes = intraResult.indicators?.quote?.first?.close ?? []
+
+                // Use regularMarketTime as the boundary for the last regular session
+                let regTime = meta.regularMarketTime ?? 0
+
+                // Find post-market: data after regularMarketTime on the last trading day
+                for i in stride(from: timestamps.count - 1, through: 0, by: -1) {
+                    if timestamps[i] > regTime, i < closes.count, let c = closes[i] {
+                        postMarketPrice = c
+                        break
+                    }
+                }
+
+                // For pre-market: find data before regStart of today (only when market is PRE)
+                if marketState == "PRE" {
+                    for i in stride(from: timestamps.count - 1, through: 0, by: -1) {
+                        if timestamps[i] >= preStart && timestamps[i] < regStart, i < closes.count, let c = closes[i] {
+                            preMarketPrice = c
+                            break
+                        }
+                    }
                 }
             }
 
@@ -196,6 +213,7 @@ private struct YahooChartResponse: Codable {
         let symbol: String
         let currency: String?
         let regularMarketPrice: Double
+        let regularMarketTime: Int?
         let chartPreviousClose: Double?
         let longName: String?
         let shortName: String?
