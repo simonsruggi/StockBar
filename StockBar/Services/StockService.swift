@@ -49,7 +49,7 @@ class StockService: ObservableObject {
 
     private func fetchSingleQuote(symbol: String) async {
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=2d") else { return }
+        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1m&range=1d&includePrePost=true") else { return }
 
         do {
             let (data, _) = try await session.data(from: url)
@@ -63,6 +63,52 @@ class StockService: ObservableObject {
             let change = price - previousClose
             let changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0
 
+            // Determine market state and extended hours prices from intraday data
+            let now = Date().timeIntervalSince1970
+            let timestamps = result.timestamp ?? []
+            let closes = result.indicators?.quote?.first?.close ?? []
+            let ctp = meta.currentTradingPeriod
+
+            let regEnd = ctp?.regular?.end ?? 0
+            let regStart = ctp?.regular?.start ?? 0
+            let preStart = ctp?.pre?.start ?? 0
+            let postEnd = ctp?.post?.end ?? 0
+
+            // Determine market state from trading periods
+            let marketState: String
+            if now >= Double(regStart) && now < Double(regEnd) {
+                marketState = "REGULAR"
+            } else if now >= Double(preStart) && now < Double(regStart) {
+                marketState = "PRE"
+            } else if now >= Double(regEnd) && now < Double(postEnd) {
+                marketState = "POST"
+            } else {
+                marketState = "CLOSED"
+            }
+
+            // Extract last post-market price (timestamps after regular end)
+            var postMarketPrice: Double? = nil
+            for i in stride(from: timestamps.count - 1, through: 0, by: -1) {
+                if timestamps[i] >= regEnd, i < closes.count, let c = closes[i] {
+                    postMarketPrice = c
+                    break
+                }
+            }
+
+            // Extract last pre-market price (timestamps before regular start)
+            var preMarketPrice: Double? = nil
+            for i in stride(from: timestamps.count - 1, through: 0, by: -1) {
+                if timestamps[i] < regStart, i < closes.count, let c = closes[i] {
+                    preMarketPrice = c
+                    break
+                }
+            }
+
+            let preChg: Double? = if let pm = preMarketPrice { pm - price } else { nil }
+            let prePct: Double? = if let ch = preChg, price > 0 { (ch / price) * 100 } else { nil }
+            let postChg: Double? = if let pm = postMarketPrice { pm - price } else { nil }
+            let postPct: Double? = if let ch = postChg, price > 0 { (ch / price) * 100 } else { nil }
+
             let quote = StockQuote(
                 symbol: meta.symbol,
                 name: meta.longName ?? meta.shortName ?? meta.symbol,
@@ -70,7 +116,13 @@ class StockService: ObservableObject {
                 change: change,
                 changePercent: changePercent,
                 currency: meta.currency ?? "USD",
-                marketState: meta.marketState ?? "CLOSED"
+                marketState: marketState,
+                preMarketPrice: preMarketPrice,
+                preMarketChange: preChg,
+                preMarketChangePercent: prePct,
+                postMarketPrice: postMarketPrice,
+                postMarketChange: postChg,
+                postMarketChangePercent: postPct
             )
 
             quotes[meta.symbol] = quote
@@ -128,6 +180,16 @@ private struct YahooChartResponse: Codable {
 
     struct ChartResult: Codable {
         let meta: ChartMeta
+        let timestamp: [Int]?
+        let indicators: Indicators?
+    }
+
+    struct Indicators: Codable {
+        let quote: [QuoteData]?
+    }
+
+    struct QuoteData: Codable {
+        let close: [Double?]?
     }
 
     struct ChartMeta: Codable {
@@ -137,7 +199,18 @@ private struct YahooChartResponse: Codable {
         let chartPreviousClose: Double?
         let longName: String?
         let shortName: String?
-        let marketState: String?
+        let currentTradingPeriod: TradingPeriods?
+    }
+
+    struct TradingPeriods: Codable {
+        let pre: PeriodInfo?
+        let regular: PeriodInfo?
+        let post: PeriodInfo?
+    }
+
+    struct PeriodInfo: Codable {
+        let start: Int
+        let end: Int
     }
 
     struct ChartError: Codable {

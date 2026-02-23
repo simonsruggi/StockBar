@@ -9,9 +9,72 @@ struct StockQuote: Identifiable, Codable {
     let currency: String
     let marketState: String
 
+    // Extended hours
+    let preMarketPrice: Double?
+    let preMarketChange: Double?
+    let preMarketChangePercent: Double?
+    let postMarketPrice: Double?
+    let postMarketChange: Double?
+    let postMarketChangePercent: Double?
+
     var id: String { symbol }
 
     var isPositive: Bool { change >= 0 }
+
+    /// Returns the most relevant current price based on market state
+    var effectivePrice: Double {
+        switch marketState {
+        case "PRE":
+            return preMarketPrice ?? price
+        case "POST":
+            return postMarketPrice ?? price
+        case "CLOSED":
+            // After hours closed: use post-market if available
+            return postMarketPrice ?? price
+        default:
+            return price
+        }
+    }
+
+    /// True if we have extended hours data to show
+    var isExtendedHours: Bool {
+        switch marketState {
+        case "PRE": return preMarketPrice != nil
+        case "POST": return postMarketPrice != nil
+        case "CLOSED": return postMarketPrice != nil
+        default: return false
+        }
+    }
+
+    /// Extended hours change (from regular close)
+    var extendedChange: Double? {
+        switch marketState {
+        case "PRE": return preMarketChange
+        case "POST", "CLOSED": return postMarketChange
+        default: return nil
+        }
+    }
+
+    /// Extended hours change percent
+    var extendedChangePercent: Double? {
+        switch marketState {
+        case "PRE": return preMarketChangePercent
+        case "POST", "CLOSED": return postMarketChangePercent
+        default: return nil
+        }
+    }
+
+    var marketStateLabel: String {
+        switch marketState {
+        case "PRE": return "Pre"
+        case "POST": return "Post"
+        case "CLOSED":
+            if postMarketPrice != nil { return "Post" }
+            return "Closed"
+        case "REGULAR": return ""
+        default: return "Closed"
+        }
+    }
 }
 
 struct Portfolio: Identifiable, Codable {

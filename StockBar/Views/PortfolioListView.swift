@@ -84,7 +84,7 @@ struct PortfolioSection: View {
         portfolio.holdings.reduce(0) { sum, holding in
             guard let quote = stockService.quotes[holding.symbol] else { return sum }
             let rate = stockService.rateToEUR(from: quote.currency)
-            return sum + holding.marketValue(currentPrice: quote.price) * rate
+            return sum + holding.marketValue(currentPrice: quote.effectivePrice) * rate
         }
     }
 
@@ -92,7 +92,7 @@ struct PortfolioSection: View {
         portfolio.holdings.reduce(0) { sum, holding in
             guard let quote = stockService.quotes[holding.symbol] else { return sum }
             let rate = stockService.rateToEUR(from: quote.currency)
-            return sum + holding.pnl(currentPrice: quote.price) * rate
+            return sum + holding.pnl(currentPrice: quote.effectivePrice) * rate
         }
     }
 
@@ -188,13 +188,25 @@ struct HoldingRow: View {
             if let quote {
                 let rate = stockService.rateToEUR(from: quote.currency)
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(String(format: "%.2f\u{20AC}", holding.marketValue(currentPrice: quote.price) * rate))
+                    Text(String(format: "%.2f\u{20AC}", holding.marketValue(currentPrice: quote.effectivePrice) * rate))
                         .font(.system(.caption, design: .monospaced))
-                    let pnl = holding.pnl(currentPrice: quote.price) * rate
-                    let pnlPct = holding.pnlPercent(currentPrice: quote.price)
-                    Text(String(format: "%+.2f\u{20AC} (%.1f%%)", pnl, pnlPct))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(pnl >= 0 ? .green : .red)
+                    let pnl = holding.pnl(currentPrice: quote.effectivePrice) * rate
+                    let pnlPct = holding.pnlPercent(currentPrice: quote.effectivePrice)
+                    HStack(spacing: 2) {
+                        Text(String(format: "%+.2f\u{20AC} (%.1f%%)", pnl, pnlPct))
+                        if quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
+                            Text(quote.marketStateLabel)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 0.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(quote.marketState.hasPrefix("PRE") ? .orange : .purple)
+                                )
+                        }
+                    }
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(pnl >= 0 ? .green : .red)
                 }
             } else {
                 ProgressView()

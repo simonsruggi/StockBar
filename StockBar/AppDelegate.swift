@@ -52,7 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for portfolio in storageService.portfolios {
             for holding in portfolio.holdings {
                 if let quote = stockService.quotes[holding.symbol] {
-                    let pnl = holding.pnl(currentPrice: quote.price)
+                    let pnl = holding.pnl(currentPrice: quote.effectivePrice)
                     let rate = stockService.rateToEUR(from: quote.currency)
                     totalPnlEUR += pnl * rate
                 }

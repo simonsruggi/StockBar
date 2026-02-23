@@ -74,9 +74,22 @@ struct QuoteRow: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(quote.symbol)
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.semibold)
+                HStack(spacing: 4) {
+                    Text(quote.symbol)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.semibold)
+                    if quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
+                        Text(quote.marketStateLabel)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(quote.marketState.hasPrefix("PRE") ? .orange : .purple)
+                            )
+                    }
+                }
                 Text(quote.name)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -86,6 +99,7 @@ struct QuoteRow: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
+                // Regular market price + change
                 Text(String(format: "%.2f", quote.price))
                     .font(.system(.body, design: .monospaced))
                     .fontWeight(.medium)
@@ -97,6 +111,19 @@ struct QuoteRow: View {
                         .font(.system(.caption, design: .monospaced))
                 }
                 .foregroundColor(quote.isPositive ? .green : .red)
+
+                // Extended hours price
+                if let extPrice = quote.isExtendedHours ? quote.effectivePrice : nil,
+                   let extChg = quote.extendedChange,
+                   let extPct = quote.extendedChangePercent {
+                    HStack(spacing: 2) {
+                        Text(String(format: "%.2f", extPrice))
+                            .fontWeight(.medium)
+                        Text(String(format: "%+.2f (%.1f%%)", extChg, extPct))
+                    }
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(extChg >= 0 ? .green.opacity(0.8) : .red.opacity(0.8))
+                }
             }
         }
         .padding(.vertical, 2)
