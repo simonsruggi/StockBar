@@ -9,12 +9,15 @@ class StockService: ObservableObject {
     @Published var exchangeRates: [String: Double] = [:]  // e.g. "USDEUR" -> 0.92
 
     private let session: URLSession
+    private var crumb: String?
 
     private init() {
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = [
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
         ]
+        config.httpCookieAcceptPolicy = .always
+        config.httpCookieStorage = .shared
         session = URLSession(configuration: config)
     }
 
@@ -37,13 +40,115 @@ class StockService: ObservableObject {
     func fetchQuotes(symbols: [String]) async {
         guard !symbols.isEmpty else { return }
 
-        // Fetch each symbol via v8 chart API (v7 requires auth now)
+        // Try v7 batch quote first (single HTTP call, live extended hours)
+        if await fetchQuotesV7(symbols: symbols) {
+            return
+        }
+
+        // Fallback: fetch each symbol via v8 chart API
+        print("[StockService] v7 failed, falling back to v8 chart API")
         await withTaskGroup(of: Void.self) { group in
             for symbol in symbols {
                 group.addTask { [weak self] in
                     await self?.fetchSingleQuote(symbol: symbol)
                 }
             }
+        }
+    }
+
+    // MARK: - v7 Quote API (batch, live extended hours)
+
+    private func fetchCrumb() async -> Bool {
+        // Step 1: GET fc.yahoo.com to collect cookies
+        guard let cookieUrl = URL(string: "https://fc.yahoo.com") else { return false }
+        _ = try? await session.data(from: cookieUrl)
+
+        // Step 2: GET crumb using the cookies
+        guard let crumbUrl = URL(string: "https://query2.finance.yahoo.com/v1/test/getcrumb") else { return false }
+        do {
+            let (data, response) = try await session.data(from: crumbUrl)
+            guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else { return false }
+            guard let crumbValue = String(data: data, encoding: .utf8), !crumbValue.isEmpty else { return false }
+            self.crumb = crumbValue
+            return true
+        } catch {
+            print("[StockService] fetchCrumb error: \(error)")
+            return false
+        }
+    }
+
+    private func fetchQuotesV7(symbols: [String]) async -> Bool {
+        // Ensure we have a crumb
+        if crumb == nil {
+            guard await fetchCrumb() else { return false }
+        }
+
+        guard let crumb = crumb else { return false }
+
+        let joined = symbols.map { $0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0 }.joined(separator: ",")
+        let crumbEncoded = crumb.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? crumb
+        guard let url = URL(string: "https://query2.finance.yahoo.com/v7/finance/quote?symbols=\(joined)&crumb=\(crumbEncoded)") else { return false }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let httpResp = response as? HTTPURLResponse else { return false }
+
+            // If 401, re-fetch crumb once and retry
+            if httpResp.statusCode == 401 {
+                self.crumb = nil
+                guard await fetchCrumb() else { return false }
+                return await fetchQuotesV7(symbols: symbols)
+            }
+
+            guard httpResp.statusCode == 200 else { return false }
+
+            let decoded = try JSONDecoder().decode(YahooV7Response.self, from: data)
+            guard let results = decoded.quoteResponse.result, !results.isEmpty else { return false }
+
+            for q in results {
+                let price = q.regularMarketPrice
+                let previousClose = q.regularMarketPreviousClose ?? price
+                let change = q.regularMarketChange ?? (price - previousClose)
+                let changePercent = q.regularMarketChangePercent ?? (previousClose > 0 ? (change / previousClose) * 100 : 0)
+
+                // Normalize marketState
+                let rawState = q.marketState ?? "CLOSED"
+                let marketState: String
+                switch rawState {
+                case "REGULAR": marketState = "REGULAR"
+                case "PRE": marketState = "PRE"
+                case "POST": marketState = "POST"
+                default: marketState = "CLOSED" // PREPRE, POSTPOST, etc.
+                }
+
+                let preChg: Double? = if let pm = q.preMarketPrice { pm - price } else { nil }
+                let prePct: Double? = if let ch = preChg, price > 0 { (ch / price) * 100 } else { nil }
+                let postChg: Double? = if let pm = q.postMarketPrice { pm - price } else { nil }
+                let postPct: Double? = if let ch = postChg, price > 0 { (ch / price) * 100 } else { nil }
+
+                let quote = StockQuote(
+                    symbol: q.symbol,
+                    name: q.longName ?? q.shortName ?? q.symbol,
+                    price: price,
+                    change: change,
+                    changePercent: changePercent,
+                    currency: q.currency ?? "USD",
+                    marketState: marketState,
+                    preMarketPrice: q.preMarketPrice,
+                    preMarketChange: preChg,
+                    preMarketChangePercent: prePct,
+                    postMarketPrice: q.postMarketPrice,
+                    postMarketChange: postChg,
+                    postMarketChangePercent: postPct
+                )
+
+                quotes[q.symbol] = quote
+            }
+
+            return true
+        } catch {
+            print("[StockService] v7 quote error: \(error)")
+            return false
         }
     }
 
@@ -232,6 +337,36 @@ private struct YahooChartResponse: Codable {
     }
 
     struct ChartError: Codable {
+        let code: String?
+        let description: String?
+    }
+}
+
+// MARK: - Yahoo Finance v7 Quote API Models
+
+private struct YahooV7Response: Codable {
+    let quoteResponse: QuoteResponse
+
+    struct QuoteResponse: Codable {
+        let result: [V7Quote]?
+        let error: V7Error?
+    }
+
+    struct V7Quote: Codable {
+        let symbol: String
+        let longName: String?
+        let shortName: String?
+        let currency: String?
+        let regularMarketPrice: Double
+        let regularMarketChange: Double?
+        let regularMarketChangePercent: Double?
+        let regularMarketPreviousClose: Double?
+        let marketState: String?
+        let preMarketPrice: Double?
+        let postMarketPrice: Double?
+    }
+
+    struct V7Error: Codable {
         let code: String?
         let description: String?
     }

@@ -136,6 +136,21 @@ struct PortfolioSection: View {
             }
             .padding(.vertical, 2)
 
+            // Column headers
+            if !portfolio.holdings.isEmpty {
+                HStack(spacing: 0) {
+                    Text("Ticker")
+                        .frame(width: 80, alignment: .leading)
+                    Text("Prezzo")
+                        .frame(maxWidth: .infinity)
+                    Text("Valore / P&L")
+                        .frame(width: 120, alignment: .trailing)
+                }
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.vertical, 1)
+            }
+
             // Holdings
             ForEach(portfolio.holdings) { holding in
                 HoldingRow(holding: holding, portfolioId: portfolio.id)
@@ -155,7 +170,7 @@ struct PortfolioSection: View {
             Text(portfolio.name)
                 .font(.headline)
         }
-        .sheet(isPresented: $showAddHolding) {
+        .popover(isPresented: $showAddHolding) {
             AddHoldingView(portfolioId: portfolio.id)
         }
     }
@@ -172,48 +187,65 @@ struct HoldingRow: View {
         stockService.quotes[holding.symbol]
     }
 
+    private func formatQty(_ qty: Double) -> String {
+        qty == qty.rounded(.down) ? String(format: "%.0f", qty) : String(format: "%.2f", qty)
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 0) {
+            // Col 1: Ticker + Qty@Avg
+            VStack(alignment: .leading, spacing: 1) {
                 Text(holding.symbol)
                     .font(.system(.caption, design: .monospaced))
-                    .fontWeight(.semibold)
-                Text("\(String(format: "%.2f", holding.quantity)) @ \(String(format: "%.2f", holding.avgPrice))")
-                    .font(.system(size: 10))
+                    .fontWeight(.bold)
+                Text("\(formatQty(holding.quantity))\u{00D7}\(String(format: "%.2f", holding.avgPrice))")
+                    .font(.system(size: 9, design: .monospaced))
                     .foregroundColor(.secondary)
             }
-
-            Spacer()
+            .frame(width: 80, alignment: .leading)
 
             if let quote {
                 let rate = stockService.rateToEUR(from: quote.currency)
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(String(format: "%.2f\u{20AC}", holding.marketValue(currentPrice: quote.effectivePrice) * rate))
+                let currSymbol = quote.currency == "EUR" ? "\u{20AC}" : "$"
+
+                // Col 2: Prezzo USD + badge
+                HStack(spacing: 3) {
+                    Text(String(format: "%.2f %@", quote.effectivePrice, currSymbol))
                         .font(.system(.caption, design: .monospaced))
-                    let pnl = holding.pnl(currentPrice: quote.effectivePrice) * rate
-                    let pnlPct = holding.pnlPercent(currentPrice: quote.effectivePrice)
-                    HStack(spacing: 2) {
-                        Text(String(format: "%+.2f\u{20AC} (%.1f%%)", pnl, pnlPct))
-                        if quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
-                            Text(quote.marketStateLabel)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 3)
-                                .padding(.vertical, 0.5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(quote.marketState.hasPrefix("PRE") ? .orange : .purple)
-                                )
-                        }
+                    if quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
+                        Text(quote.marketStateLabel)
+                            .font(.system(size: 7, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 3)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(quote.marketState.hasPrefix("PRE") ? .orange : .purple)
+                            )
                     }
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(pnl >= 0 ? .green : .red)
                 }
+                .frame(maxWidth: .infinity)
+
+                // Col 3: Controvalore EUR + P&L
+                let marketVal = holding.marketValue(currentPrice: quote.effectivePrice) * rate
+                let pnl = holding.pnl(currentPrice: quote.effectivePrice) * rate
+                let pnlPct = holding.pnlPercent(currentPrice: quote.effectivePrice)
+
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(String(format: "%.2f\u{20AC}", marketVal))
+                        .font(.system(.caption, design: .monospaced))
+                    Text(String(format: "%+.2f\u{20AC} (%.1f%%)", pnl, pnlPct))
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(pnl >= 0 ? .green : .red)
+                }
+                .frame(width: 120, alignment: .trailing)
             } else {
+                Spacer()
                 ProgressView()
                     .scaleEffect(0.5)
             }
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 2)
         .contextMenu {
             Button {
                 showEdit = true
@@ -226,7 +258,7 @@ struct HoldingRow: View {
                 Label("Elimina", systemImage: "trash")
             }
         }
-        .sheet(isPresented: $showEdit) {
+        .popover(isPresented: $showEdit) {
             EditHoldingView(portfolioId: portfolioId, holding: holding)
         }
     }

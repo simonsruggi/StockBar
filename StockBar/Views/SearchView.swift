@@ -8,9 +8,9 @@ enum SearchMode {
 struct SearchView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    @Environment(\.dismiss) var dismiss
 
     let mode: SearchMode
+    @Binding var isPresented: Bool
 
     @State private var query = ""
     @State private var results: [SearchResult] = []
@@ -23,7 +23,7 @@ struct SearchView: View {
                 Text("Cerca titolo")
                     .font(.headline)
                 Spacer()
-                Button("Chiudi") { dismiss() }
+                Button("Chiudi") { isPresented = false }
                     .buttonStyle(.borderless)
             }
             .padding()
@@ -90,13 +90,14 @@ struct SearchView: View {
                 .listStyle(.plain)
             }
         }
-        .frame(width: 360, height: 400)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func addResult(_ result: SearchResult) {
         switch mode {
         case .watchlist:
             storageService.addToWatchlist(result.symbol)
+            isPresented = false
             Task {
                 await stockService.fetchQuotes(symbols: [result.symbol])
             }

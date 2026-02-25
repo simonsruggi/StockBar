@@ -7,7 +7,11 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "StockBar",
-            path: "StockBar"
+            path: "StockBar",
+            resources: [
+                .process("Assets.xcassets"),
+                .copy("Resources/AppIcon.icns")
+            ]
         ),
     ]
 )

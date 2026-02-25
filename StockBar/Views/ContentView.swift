@@ -12,6 +12,20 @@ struct ContentView: View {
     @State private var showSearch = false
 
     var body: some View {
+        Group {
+            if showSearch {
+                SearchView(mode: .watchlist, isPresented: $showSearch)
+            } else {
+                mainContent
+            }
+        }
+        .frame(width: 380, height: 520)
+        .onReceive(NotificationCenter.default.publisher(for: .popoverDidClose)) { _ in
+            showSearch = false
+        }
+    }
+
+    private var mainContent: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
@@ -42,6 +56,13 @@ struct ContentView: View {
                         .font(.system(size: 12))
                 }
                 .buttonStyle(.borderless)
+
+                Button(action: { NSApp.terminate(nil) }) {
+                    Image(systemName: "power")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+                .help("Esci da StockBar")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -65,10 +86,6 @@ struct ContentView: View {
             case .portfolios:
                 PortfolioListView()
             }
-        }
-        .frame(width: 380, height: 520)
-        .sheet(isPresented: $showSearch) {
-            SearchView(mode: .watchlist)
         }
     }
 }

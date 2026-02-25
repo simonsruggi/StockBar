@@ -31,7 +31,14 @@ struct AddHoldingView: View {
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal)
                 .onChange(of: symbol) { _, newValue in
-                    selectedSymbol = nil
+                    if selectedSymbol != nil {
+                        // User edited the text after selecting → reset selection
+                        if newValue != selectedSymbol {
+                            selectedSymbol = nil
+                        } else {
+                            return
+                        }
+                    }
                     searchTask?.cancel()
                     guard newValue.count >= 1 else {
                         searchResults = []
@@ -47,9 +54,10 @@ struct AddHoldingView: View {
             if !searchResults.isEmpty && selectedSymbol == nil {
                 List(searchResults.prefix(5)) { result in
                     Button(action: {
-                        symbol = result.symbol
-                        selectedSymbol = result.symbol
+                        searchTask?.cancel()
                         searchResults = []
+                        selectedSymbol = result.symbol
+                        symbol = result.symbol
                     }) {
                         HStack {
                             Text(result.symbol)
