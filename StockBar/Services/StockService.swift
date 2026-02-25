@@ -6,7 +6,7 @@ class StockService: ObservableObject {
 
     @Published var quotes: [String: StockQuote] = [:]
     @Published var isLoading = false
-    @Published var exchangeRates: [String: Double] = [:]  // e.g. "USDEUR" -> 0.92
+    @Published var exchangeRates: [String: Double] = [:]  // e.g. "USD" -> 0.92 (rate to preferred currency)
 
     private let session: URLSession
     private var crumb: String?
@@ -34,7 +34,32 @@ class StockService: ObservableObject {
         defer { isLoading = false }
 
         await fetchQuotes(symbols: Array(allSymbols))
-        await fetchExchangeRate(from: "USD", to: "EUR")
+
+        // Fetch exchange rates for all stock currencies toward both target currencies
+        let preferredCurrency = storageService.preferredCurrency
+        let priceCurrency = storageService.stockPriceCurrency
+
+        // Collect all pairs we need: (from, to)
+        var pairs = Set<String>() // "FROMTO" keys
+        for symbol in allSymbols {
+            guard let quote = quotes[symbol] else { continue }
+            if quote.currency != preferredCurrency {
+                pairs.insert("\(quote.currency)|\(preferredCurrency)")
+            }
+            if !priceCurrency.isEmpty && quote.currency != priceCurrency {
+                pairs.insert("\(quote.currency)|\(priceCurrency)")
+            }
+        }
+        await withTaskGroup(of: Void.self) { group in
+            for pair in pairs {
+                let parts = pair.split(separator: "|")
+                let from = String(parts[0])
+                let to = String(parts[1])
+                group.addTask { [weak self] in
+                    await self?.fetchExchangeRate(from: from, to: to)
+                }
+            }
+        }
     }
 
     func fetchQuotes(symbols: [String]) async {
@@ -253,9 +278,16 @@ class StockService: ObservableObject {
         }
     }
 
-    func rateToEUR(from currency: String) -> Double {
-        if currency == "EUR" { return 1.0 }
-        return exchangeRates["\(currency)EUR"] ?? 1.0
+    func rate(from currency: String) -> Double {
+        let preferred = StorageService.shared.preferredCurrency
+        if currency == preferred { return 1.0 }
+        return exchangeRates["\(currency)\(preferred)"] ?? 1.0
+    }
+
+    func priceRate(from currency: String) -> Double {
+        let target = StorageService.shared.stockPriceCurrency
+        if target.isEmpty || currency == target { return 1.0 }
+        return exchangeRates["\(currency)\(target)"] ?? 1.0
     }
 
     private func fetchExchangeRate(from: String, to: String) async {

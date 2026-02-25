@@ -53,25 +53,98 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenuBarTitle() {
-        var totalPnlEUR = 0.0
+        let displayMode = storageService.menuBarDisplay
+
+        // Icon only
+        if displayMode == "icon" {
+            statusItem.button?.attributedTitle = NSAttributedString(string: "")
+            statusItem.button?.title = ""
+            statusItem.button?.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockBar")
+            return
+        }
+
+        // Compute portfolio stats
+        var totalPnl = 0.0
+        var totalValue = 0.0
+        var totalCost = 0.0
         for portfolio in storageService.portfolios {
             for holding in portfolio.holdings {
                 if let quote = stockService.quotes[holding.symbol] {
-                    let pnl = holding.pnl(currentPrice: quote.effectivePrice)
-                    let rate = stockService.rateToEUR(from: quote.currency)
-                    totalPnlEUR += pnl * rate
+                    let rate = stockService.rate(from: quote.currency)
+                    totalPnl += holding.pnl(currentPrice: quote.effectivePrice) * rate
+                    totalValue += holding.marketValue(currentPrice: quote.effectivePrice) * rate
+                    totalCost += (holding.avgPrice * holding.quantity) * rate
                 }
             }
         }
+        let totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
 
-        let sign = totalPnlEUR >= 0 ? "+" : ""
-        let title = " P&L \(sign)\(String(format: "%.2f", totalPnlEUR))\u{20AC}"
+        // Find best/worst watchlist stock by daily change %
+        let bestStock = storageService.watchlist.compactMap { stockService.quotes[$0] }
+            .max(by: { $0.changePercent < $1.changePercent })
+        let worstStock = storageService.watchlist.compactMap { stockService.quotes[$0] }
+            .min(by: { $0.changePercent < $1.changePercent })
+
+        let currSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
+        let title: String
+        let color: NSColor
+
+        switch displayMode {
+        case "totalValue":
+            title = " \(String(format: "%.2f", totalValue))\(currSymbol)"
+            color = totalPnl >= 0 ? .systemGreen : .systemRed
+
+        case "pnlPercent":
+            let sign = totalPnlPct >= 0 ? "+" : ""
+            title = " P&L \(sign)\(String(format: "%.1f", totalPnlPct))%"
+            color = totalPnlPct >= 0 ? .systemGreen : .systemRed
+
+        case "pnlFull":
+            let sign = totalPnl >= 0 ? "+" : ""
+            let pctSign = totalPnlPct >= 0 ? "+" : ""
+            title = " \(sign)\(String(format: "%.2f", totalPnl))\(currSymbol) (\(pctSign)\(String(format: "%.1f", totalPnlPct))%)"
+            color = totalPnl >= 0 ? .systemGreen : .systemRed
+
+        case "bestStock":
+            if let best = bestStock {
+                let sign = best.changePercent >= 0 ? "+" : ""
+                title = " \(best.symbol) \(sign)\(String(format: "%.1f", best.changePercent))%"
+                color = best.changePercent >= 0 ? .systemGreen : .systemRed
+            } else {
+                title = " --"
+                color = .secondaryLabelColor
+            }
+
+        case "worstStock":
+            if let worst = worstStock {
+                let sign = worst.changePercent >= 0 ? "+" : ""
+                title = " \(worst.symbol) \(sign)\(String(format: "%.1f", worst.changePercent))%"
+                color = worst.changePercent >= 0 ? .systemGreen : .systemRed
+            } else {
+                title = " --"
+                color = .secondaryLabelColor
+            }
+
+        case "bestWorst":
+            if let best = bestStock, let worst = worstStock {
+                let bSign = best.changePercent >= 0 ? "+" : ""
+                let wSign = worst.changePercent >= 0 ? "+" : ""
+                title = " ▲\(best.symbol) \(bSign)\(String(format: "%.1f", best.changePercent))%  ▼\(worst.symbol) \(wSign)\(String(format: "%.1f", worst.changePercent))%"
+                color = .labelColor
+            } else {
+                title = " --"
+                color = .secondaryLabelColor
+            }
+
+        default: // "pnl"
+            let sign = totalPnl >= 0 ? "+" : ""
+            title = " P&L \(sign)\(String(format: "%.2f", totalPnl))\(currSymbol)"
+            color = totalPnl >= 0 ? .systemGreen : .systemRed
+        }
 
         statusItem.button?.image = nil
         statusItem.button?.title = title
 
-        // Color via attributed string
-        let color: NSColor = totalPnlEUR >= 0 ? .systemGreen : .systemRed
         let attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: color,
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)

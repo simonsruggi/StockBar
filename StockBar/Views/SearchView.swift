@@ -20,15 +20,15 @@ struct SearchView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Cerca titolo")
+                Text("Search")
                     .font(.headline)
                 Spacer()
-                Button("Chiudi") { isPresented = false }
+                Button("Close") { isPresented = false }
                     .buttonStyle(.borderless)
             }
             .padding()
 
-            TextField("Simbolo o nome (es. AAPL, Tesla)", text: $query)
+            TextField("Symbol or name (e.g. AAPL, Tesla)", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal)
                 .onChange(of: query) { _, newValue in
@@ -53,11 +53,11 @@ struct SearchView: View {
 
             if isSearching {
                 Spacer()
-                ProgressView("Ricerca...")
+                ProgressView("Searching...")
                 Spacer()
             } else if results.isEmpty && query.count >= 2 {
                 Spacer()
-                Text("Nessun risultato")
+                Text("No results")
                     .foregroundColor(.secondary)
                 Spacer()
             } else {

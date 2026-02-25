@@ -12,6 +12,38 @@ class StorageService: ObservableObject {
         didSet { save() }
     }
 
+    @Published var preferredCurrency: String = "EUR" {
+        didSet { save() }
+    }
+
+    @Published var stockPriceCurrency: String = "" {
+        didSet { save() }
+    }
+
+    @Published var showExtendedHours: Bool = true {
+        didSet { save() }
+    }
+
+    /// What to display in the menu bar: "pnl", "totalValue", "icon"
+    @Published var menuBarDisplay: String = "pnl" {
+        didSet { save() }
+    }
+
+    static let supportedCurrencies = ["EUR", "USD", "GBP", "CHF", "JPY", "CAD", "AUD"]
+
+    static func currencySymbol(for code: String) -> String {
+        switch code {
+        case "EUR": return "€"
+        case "USD": return "$"
+        case "GBP": return "£"
+        case "CHF": return "CHF"
+        case "JPY": return "¥"
+        case "CAD": return "C$"
+        case "AUD": return "A$"
+        default: return code
+        }
+    }
+
     private let fileURL: URL
 
     private init() {
@@ -67,10 +99,14 @@ class StorageService: ObservableObject {
     private struct AppData: Codable {
         var watchlist: [String]
         var portfolios: [Portfolio]
+        var preferredCurrency: String?
+        var stockPriceCurrency: String?
+        var showExtendedHours: Bool?
+        var menuBarDisplay: String?
     }
 
     private func save() {
-        let data = AppData(watchlist: watchlist, portfolios: portfolios)
+        let data = AppData(watchlist: watchlist, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -86,6 +122,10 @@ class StorageService: ObservableObject {
             let decoded = try JSONDecoder().decode(AppData.self, from: data)
             watchlist = decoded.watchlist
             portfolios = decoded.portfolios
+            preferredCurrency = decoded.preferredCurrency ?? "EUR"
+            stockPriceCurrency = decoded.stockPriceCurrency ?? ""
+            showExtendedHours = decoded.showExtendedHours ?? true
+            menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
         } catch {
             print("Error loading data: \(error)")
         }

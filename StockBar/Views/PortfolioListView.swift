@@ -13,9 +13,9 @@ struct PortfolioListView: View {
                 Image(systemName: "briefcase")
                     .font(.system(size: 32))
                     .foregroundColor(.secondary)
-                Text("Nessun portafoglio")
+                Text("No portfolios")
                     .foregroundColor(.secondary)
-                Button("Crea portafoglio") {
+                Button("Create portfolio") {
                     showNewPortfolio = true
                 }
                 .buttonStyle(.borderedProminent)
@@ -27,7 +27,7 @@ struct PortfolioListView: View {
                 List {
                     if showNewPortfolio {
                         HStack {
-                            TextField("Nome portafoglio", text: $newPortfolioName)
+                            TextField("Portfolio name", text: $newPortfolioName)
                                 .textFieldStyle(.roundedBorder)
                                 .onSubmit {
                                     createPortfolio()
@@ -56,7 +56,7 @@ struct PortfolioListView: View {
                 Button(action: { showNewPortfolio = true }) {
                     HStack {
                         Image(systemName: "plus.circle.fill")
-                        Text("Nuovo portafoglio")
+                        Text("New portfolio")
                     }
                     .font(.caption)
                 }
@@ -80,33 +80,37 @@ struct PortfolioSection: View {
     @Environment(\.addHoldingAction) var addHoldingAction
     let portfolio: Portfolio
 
-    var totalValueEUR: Double {
+    private var currSymbol: String {
+        StorageService.currencySymbol(for: storageService.preferredCurrency)
+    }
+
+    var totalValue: Double {
         portfolio.holdings.reduce(0) { sum, holding in
             guard let quote = stockService.quotes[holding.symbol] else { return sum }
-            let rate = stockService.rateToEUR(from: quote.currency)
+            let rate = stockService.rate(from: quote.currency)
             return sum + holding.marketValue(currentPrice: quote.effectivePrice) * rate
         }
     }
 
-    var totalPnlEUR: Double {
+    var totalPnl: Double {
         portfolio.holdings.reduce(0) { sum, holding in
             guard let quote = stockService.quotes[holding.symbol] else { return sum }
-            let rate = stockService.rateToEUR(from: quote.currency)
+            let rate = stockService.rate(from: quote.currency)
             return sum + holding.pnl(currentPrice: quote.effectivePrice) * rate
         }
     }
 
-    var totalCostEUR: Double {
+    var totalCost: Double {
         portfolio.holdings.reduce(0) { sum, holding in
             guard let quote = stockService.quotes[holding.symbol] else { return sum }
-            let rate = stockService.rateToEUR(from: quote.currency)
+            let rate = stockService.rate(from: quote.currency)
             return sum + (holding.avgPrice * holding.quantity) * rate
         }
     }
 
     var totalPnlPercent: Double {
-        guard totalCostEUR > 0 else { return 0 }
-        return (totalPnlEUR / totalCostEUR) * 100
+        guard totalCost > 0 else { return 0 }
+        return (totalPnl / totalCost) * 100
     }
 
     var body: some View {
@@ -114,10 +118,10 @@ struct PortfolioSection: View {
             // Summary row
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Valore totale")
+                    Text("Total value")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text(String(format: "%.2f\u{20AC}", totalValueEUR))
+                    Text(String(format: "%.2f%@", totalValue, currSymbol))
                         .font(.system(.body, design: .monospaced))
                         .fontWeight(.semibold)
                 }
@@ -127,11 +131,11 @@ struct PortfolioSection: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     HStack(spacing: 2) {
-                        Text(String(format: "%+.2f\u{20AC}", totalPnlEUR))
+                        Text(String(format: "%+.2f%@", totalPnl, currSymbol))
                         Text(String(format: "(%.1f%%)", totalPnlPercent))
                     }
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(totalPnlEUR >= 0 ? .green : .red)
+                    .foregroundColor(totalPnl >= 0 ? .green : .red)
                 }
             }
             .padding(.vertical, 2)
@@ -139,11 +143,11 @@ struct PortfolioSection: View {
             // Column headers
             if !portfolio.holdings.isEmpty {
                 HStack(spacing: 0) {
-                    Text("Ticker")
+                    Text("Symbol")
                         .frame(width: 80, alignment: .leading)
-                    Text("Prezzo")
+                    Text("Price")
                         .frame(maxWidth: .infinity)
-                    Text("Valore / P&L")
+                    Text("Value / P&L")
                         .frame(width: 120, alignment: .trailing)
                 }
                 .font(.system(size: 9, weight: .medium))
@@ -160,7 +164,7 @@ struct PortfolioSection: View {
             Button(action: { addHoldingAction.perform(portfolio.id) }) {
                 HStack {
                     Image(systemName: "plus")
-                    Text("Aggiungi titolo")
+                    Text("Add holding")
                 }
                 .font(.caption)
                 .foregroundColor(.accentColor)
@@ -202,14 +206,17 @@ struct HoldingRow: View {
             .frame(width: 80, alignment: .leading)
 
             if let quote {
-                let rate = stockService.rateToEUR(from: quote.currency)
-                let currSymbol = quote.currency == "EUR" ? "\u{20AC}" : "$"
+                let rate = stockService.rate(from: quote.currency)
+                let pRate = stockService.priceRate(from: quote.currency)
+                let priceCurr = storageService.stockPriceCurrency
+                let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
+                let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
 
-                // Col 2: Prezzo USD + badge
+                // Col 2: Price + badge
                 HStack(spacing: 3) {
-                    Text(String(format: "%.2f %@", quote.effectivePrice, currSymbol))
+                    Text(String(format: "%.2f %@", quote.effectivePrice * pRate, priceSymbol))
                         .font(.system(.caption, design: .monospaced))
-                    if quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
+                    if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
                         Text(quote.marketStateLabel)
                             .font(.system(size: 7, weight: .semibold))
                             .foregroundColor(.white)
@@ -223,15 +230,15 @@ struct HoldingRow: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                // Col 3: Controvalore EUR + P&L
+                // Col 3: Controvalore + P&L in preferred currency
                 let marketVal = holding.marketValue(currentPrice: quote.effectivePrice) * rate
                 let pnl = holding.pnl(currentPrice: quote.effectivePrice) * rate
                 let pnlPct = holding.pnlPercent(currentPrice: quote.effectivePrice)
 
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(String(format: "%.2f\u{20AC}", marketVal))
+                    Text(String(format: "%.2f%@", marketVal, prefSymbol))
                         .font(.system(.caption, design: .monospaced))
-                    Text(String(format: "%+.2f\u{20AC} (%.1f%%)", pnl, pnlPct))
+                    Text(String(format: "%+.2f%@ (%.1f%%)", pnl, prefSymbol, pnlPct))
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(pnl >= 0 ? .green : .red)
                 }
@@ -247,12 +254,12 @@ struct HoldingRow: View {
             Button {
                 editHoldingAction.perform(portfolioId, holding)
             } label: {
-                Label("Modifica", systemImage: "pencil")
+                Label("Edit", systemImage: "pencil")
             }
             Button(role: .destructive) {
                 storageService.removeHolding(from: portfolioId, holdingId: holding.id)
             } label: {
-                Label("Elimina", systemImage: "trash")
+                Label("Delete", systemImage: "trash")
             }
         }
     }
@@ -279,10 +286,10 @@ struct EditHoldingView: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Modifica \(holding.symbol)")
+                Text("Edit \(holding.symbol)")
                     .font(.headline)
                 Spacer()
-                Button("Chiudi") { isPresented = nil }
+                Button("Close") { isPresented = nil }
                     .buttonStyle(.borderless)
             }
             .padding(.horizontal)
@@ -290,14 +297,14 @@ struct EditHoldingView: View {
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading) {
-                    Text("Quantita")
+                    Text("Quantity")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("0", text: $quantityText)
                         .textFieldStyle(.roundedBorder)
                 }
                 VStack(alignment: .leading) {
-                    Text("Prezzo medio")
+                    Text("Avg price")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("0.00", text: $avgPriceText)
@@ -308,7 +315,7 @@ struct EditHoldingView: View {
 
             Spacer()
 
-            Button("Salva") {
+            Button("Save") {
                 save()
             }
             .buttonStyle(.borderedProminent)

@@ -17,10 +17,10 @@ struct AddHoldingView: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Aggiungi titolo")
+                Text("Add holding")
                     .font(.headline)
                 Spacer()
-                Button("Chiudi") { isPresented = nil }
+                Button("Close") { isPresented = nil }
                     .buttonStyle(.borderless)
             }
             .padding(.horizontal)
@@ -49,7 +49,7 @@ struct AddHoldingView: View {
                 .cornerRadius(8)
                 .padding(.horizontal)
             } else {
-                TextField("Cerca simbolo (es. AAPL)", text: $searchText)
+                TextField("Search symbol (e.g. AAPL)", text: $searchText)
                     .textFieldStyle(.roundedBorder)
                     .padding(.horizontal)
                     .onChange(of: searchText) { _, newValue in
@@ -91,14 +91,14 @@ struct AddHoldingView: View {
             // Quantity & price
             HStack(spacing: 12) {
                 VStack(alignment: .leading) {
-                    Text("Quantita")
+                    Text("Quantity")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("0", text: $quantityText)
                         .textFieldStyle(.roundedBorder)
                 }
                 VStack(alignment: .leading) {
-                    Text("Prezzo medio")
+                    Text("Avg price")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("0.00", text: $avgPriceText)
@@ -109,7 +109,7 @@ struct AddHoldingView: View {
 
             Spacer()
 
-            Button("Aggiungi") {
+            Button("Add") {
                 addHolding()
             }
             .buttonStyle(.borderedProminent)

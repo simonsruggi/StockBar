@@ -2,7 +2,18 @@ import SwiftUI
 
 enum Tab: String, CaseIterable {
     case watchlist = "Watchlist"
-    case portfolios = "Portafogli"
+    case portfolios = "Portfolios"
+    case settings = "Settings"
+}
+
+extension Tab {
+    var icon: String {
+        switch self {
+        case .watchlist: return "list.bullet"
+        case .portfolios: return "briefcase"
+        case .settings: return "gear"
+        }
+    }
 }
 
 // Environment keys for navigation from child views
@@ -87,27 +98,21 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderless)
 
-                Button(action: { showSearch = true }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12))
-                }
-                .buttonStyle(.borderless)
-
                 Button(action: { NSApp.terminate(nil) }) {
                     Image(systemName: "power")
                         .font(.system(size: 11))
                 }
                 .buttonStyle(.borderless)
-                .help("Esci da StockBar")
+                .help("Quit StockBar")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
 
             // Tab picker
             Picker("", selection: $selectedTab) {
-                ForEach(Tab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
+                Text("Watchlist").tag(Tab.watchlist)
+                Text("Portfolios").tag(Tab.portfolios)
+                Image(systemName: "gear").tag(Tab.settings)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
@@ -116,12 +121,18 @@ struct ContentView: View {
             Divider()
 
             // Content
-            switch selectedTab {
-            case .watchlist:
-                WatchlistView()
-            case .portfolios:
-                PortfolioListView()
+            Group {
+                switch selectedTab {
+                case .watchlist:
+                    WatchlistView(showSearch: $showSearch)
+                case .portfolios:
+                    PortfolioListView()
+                case .settings:
+                    SettingsView()
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .controlBackgroundColor))
         }
         .environment(\.addHoldingAction, AddHoldingAction { portfolioId in
             addHoldingPortfolioId = portfolioId
