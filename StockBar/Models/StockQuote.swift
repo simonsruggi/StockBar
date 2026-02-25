@@ -64,6 +64,11 @@ struct StockQuote: Identifiable, Codable {
         }
     }
 
+    /// Price respecting the extended hours preference
+    func displayPrice(extendedHours: Bool) -> Double {
+        extendedHours ? effectivePrice : price
+    }
+
     var marketStateLabel: String {
         switch marketState {
         case "PRE": return "Pre"

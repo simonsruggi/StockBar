@@ -88,7 +88,7 @@ struct PortfolioSection: View {
         portfolio.holdings.reduce(0) { sum, holding in
             guard let quote = stockService.quotes[holding.symbol] else { return sum }
             let rate = stockService.rate(from: quote.currency)
-            return sum + holding.marketValue(currentPrice: quote.effectivePrice) * rate
+            return sum + holding.marketValue(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours)) * rate
         }
     }
 
@@ -96,7 +96,7 @@ struct PortfolioSection: View {
         portfolio.holdings.reduce(0) { sum, holding in
             guard let quote = stockService.quotes[holding.symbol] else { return sum }
             let rate = stockService.rate(from: quote.currency)
-            return sum + holding.pnl(currentPrice: quote.effectivePrice) * rate
+            return sum + holding.pnl(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours)) * rate
         }
     }
 
@@ -214,7 +214,7 @@ struct HoldingRow: View {
 
                 // Col 2: Price + badge
                 HStack(spacing: 3) {
-                    Text(String(format: "%.2f %@", quote.effectivePrice * pRate, priceSymbol))
+                    Text(String(format: "%.2f %@", quote.displayPrice(extendedHours: storageService.showExtendedHours) * pRate, priceSymbol))
                         .font(.system(.caption, design: .monospaced))
                     if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
                         Text(quote.marketStateLabel)
@@ -231,9 +231,9 @@ struct HoldingRow: View {
                 .frame(maxWidth: .infinity)
 
                 // Col 3: Controvalore + P&L in preferred currency
-                let marketVal = holding.marketValue(currentPrice: quote.effectivePrice) * rate
-                let pnl = holding.pnl(currentPrice: quote.effectivePrice) * rate
-                let pnlPct = holding.pnlPercent(currentPrice: quote.effectivePrice)
+                let marketVal = holding.marketValue(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours)) * rate
+                let pnl = holding.pnl(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours)) * rate
+                let pnlPct = holding.pnlPercent(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours))
 
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(String(format: "%.2f%@", marketVal, prefSymbol))

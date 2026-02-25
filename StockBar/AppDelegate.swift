@@ -71,8 +71,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             for holding in portfolio.holdings {
                 if let quote = stockService.quotes[holding.symbol] {
                     let rate = stockService.rate(from: quote.currency)
-                    totalPnl += holding.pnl(currentPrice: quote.effectivePrice) * rate
-                    totalValue += holding.marketValue(currentPrice: quote.effectivePrice) * rate
+                    totalPnl += holding.pnl(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours)) * rate
+                    totalValue += holding.marketValue(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours)) * rate
                     totalCost += (holding.avgPrice * holding.quantity) * rate
                 }
             }
