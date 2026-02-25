@@ -4,6 +4,12 @@ A lightweight macOS menu bar app for tracking stocks and portfolios in real time
 
 Built with SwiftUI. No account required, no API keys needed — data comes directly from Yahoo Finance.
 
+## Screenshots
+
+| Menu Bar | Watchlist | Portfolios | Settings |
+|---|---|---|---|
+| ![Menu Bar](screenshots/menubar.png) | ![Watchlist](screenshots/watchlist.png) | ![Portfolios](screenshots/portfolio.png) | ![Settings](screenshots/settings.png) |
+
 ## Features
 
 - **Menu Bar P&L** — See your portfolio performance at a glance, always visible

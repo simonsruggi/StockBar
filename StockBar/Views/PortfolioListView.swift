@@ -79,6 +79,8 @@ struct PortfolioSection: View {
     @EnvironmentObject var storageService: StorageService
     @Environment(\.addHoldingAction) var addHoldingAction
     let portfolio: Portfolio
+    @State private var isRenaming = false
+    @State private var renameText = ""
 
     private var currSymbol: String {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
@@ -171,9 +173,36 @@ struct PortfolioSection: View {
             }
             .buttonStyle(.borderless)
         } header: {
-            Text(portfolio.name)
-                .font(.headline)
+            if isRenaming {
+                HStack {
+                    TextField("Name", text: $renameText)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.headline)
+                        .onSubmit { commitRename() }
+                    Button("OK") { commitRename() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(renameText.isEmpty)
+                }
+            } else {
+                Text(portfolio.name)
+                    .font(.headline)
+                    .contextMenu {
+                        Button {
+                            renameText = portfolio.name
+                            isRenaming = true
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                    }
+            }
         }
+    }
+
+    private func commitRename() {
+        guard !renameText.isEmpty else { return }
+        storageService.renamePortfolio(id: portfolio.id, name: renameText)
+        isRenaming = false
     }
 }
 

@@ -71,6 +71,11 @@ class StorageService: ObservableObject {
         portfolios.append(Portfolio(name: name))
     }
 
+    func renamePortfolio(id: UUID, name: String) {
+        guard let index = portfolios.firstIndex(where: { $0.id == id }) else { return }
+        portfolios[index].name = name
+    }
+
     func deletePortfolio(at offsets: IndexSet) {
         portfolios.remove(atOffsets: offsets)
     }
