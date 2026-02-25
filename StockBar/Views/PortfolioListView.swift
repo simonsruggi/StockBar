@@ -77,8 +77,8 @@ struct PortfolioListView: View {
 struct PortfolioSection: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @Environment(\.addHoldingAction) var addHoldingAction
     let portfolio: Portfolio
-    @State private var showAddHolding = false
 
     var totalValueEUR: Double {
         portfolio.holdings.reduce(0) { sum, holding in
@@ -157,7 +157,7 @@ struct PortfolioSection: View {
             }
 
             // Add holding button
-            Button(action: { showAddHolding = true }) {
+            Button(action: { addHoldingAction.perform(portfolio.id) }) {
                 HStack {
                     Image(systemName: "plus")
                     Text("Aggiungi titolo")
@@ -170,18 +170,15 @@ struct PortfolioSection: View {
             Text(portfolio.name)
                 .font(.headline)
         }
-        .popover(isPresented: $showAddHolding) {
-            AddHoldingView(portfolioId: portfolio.id)
-        }
     }
 }
 
 struct HoldingRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @Environment(\.editHoldingAction) var editHoldingAction
     let holding: Holding
     let portfolioId: UUID
-    @State private var showEdit = false
 
     var quote: StockQuote? {
         stockService.quotes[holding.symbol]
@@ -248,7 +245,7 @@ struct HoldingRow: View {
         .padding(.vertical, 2)
         .contextMenu {
             Button {
-                showEdit = true
+                editHoldingAction.perform(portfolioId, holding)
             } label: {
                 Label("Modifica", systemImage: "pencil")
             }
@@ -258,25 +255,23 @@ struct HoldingRow: View {
                 Label("Elimina", systemImage: "trash")
             }
         }
-        .popover(isPresented: $showEdit) {
-            EditHoldingView(portfolioId: portfolioId, holding: holding)
-        }
     }
 }
 
 struct EditHoldingView: View {
     @EnvironmentObject var storageService: StorageService
-    @Environment(\.dismiss) var dismiss
 
     let portfolioId: UUID
     let holding: Holding
+    @Binding var isPresented: (portfolioId: UUID, holding: Holding)?
 
     @State private var quantityText: String
     @State private var avgPriceText: String
 
-    init(portfolioId: UUID, holding: Holding) {
+    init(portfolioId: UUID, holding: Holding, isPresented: Binding<(portfolioId: UUID, holding: Holding)?>) {
         self.portfolioId = portfolioId
         self.holding = holding
+        self._isPresented = isPresented
         _quantityText = State(initialValue: String(format: "%.2f", holding.quantity))
         _avgPriceText = State(initialValue: String(format: "%.2f", holding.avgPrice))
     }
@@ -287,7 +282,7 @@ struct EditHoldingView: View {
                 Text("Modifica \(holding.symbol)")
                     .font(.headline)
                 Spacer()
-                Button("Chiudi") { dismiss() }
+                Button("Chiudi") { isPresented = nil }
                     .buttonStyle(.borderless)
             }
             .padding(.horizontal)
@@ -320,7 +315,7 @@ struct EditHoldingView: View {
             .disabled(quantityText.isEmpty || avgPriceText.isEmpty)
             .padding()
         }
-        .frame(width: 320, height: 180)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func save() {
@@ -328,6 +323,6 @@ struct EditHoldingView: View {
               let price = Double(avgPriceText.replacingOccurrences(of: ",", with: "."))
         else { return }
         storageService.updateHolding(in: portfolioId, holdingId: holding.id, quantity: qty, avgPrice: price)
-        dismiss()
+        isPresented = nil
     }
 }

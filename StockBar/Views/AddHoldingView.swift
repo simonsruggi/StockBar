@@ -3,11 +3,11 @@ import SwiftUI
 struct AddHoldingView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    @Environment(\.dismiss) var dismiss
 
     let portfolioId: UUID
+    @Binding var isPresented: UUID?
 
-    @State private var symbol = ""
+    @State private var searchText = ""
     @State private var quantityText = ""
     @State private var avgPriceText = ""
     @State private var searchResults: [SearchResult] = []
@@ -20,58 +20,72 @@ struct AddHoldingView: View {
                 Text("Aggiungi titolo")
                     .font(.headline)
                 Spacer()
-                Button("Chiudi") { dismiss() }
+                Button("Chiudi") { isPresented = nil }
                     .buttonStyle(.borderless)
             }
             .padding(.horizontal)
             .padding(.top)
 
             // Symbol search
-            TextField("Cerca simbolo (es. AAPL)", text: $symbol)
-                .textFieldStyle(.roundedBorder)
+            if let selected = selectedSymbol {
+                HStack {
+                    Text(selected)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Button(action: {
+                        selectedSymbol = nil
+                        searchText = ""
+                        searchResults = []
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
                 .padding(.horizontal)
-                .onChange(of: symbol) { _, newValue in
-                    if selectedSymbol != nil {
-                        // User edited the text after selecting → reset selection
-                        if newValue != selectedSymbol {
-                            selectedSymbol = nil
-                        } else {
+                .padding(.vertical, 8)
+                .background(Color.accentColor.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal)
+            } else {
+                TextField("Cerca simbolo (es. AAPL)", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal)
+                    .onChange(of: searchText) { _, newValue in
+                        searchTask?.cancel()
+                        guard newValue.count >= 1 else {
+                            searchResults = []
                             return
                         }
-                    }
-                    searchTask?.cancel()
-                    guard newValue.count >= 1 else {
-                        searchResults = []
-                        return
-                    }
-                    searchTask = Task {
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                        guard !Task.isCancelled else { return }
-                        searchResults = await stockService.search(query: newValue)
-                    }
-                }
-
-            if !searchResults.isEmpty && selectedSymbol == nil {
-                List(searchResults.prefix(5)) { result in
-                    Button(action: {
-                        searchTask?.cancel()
-                        searchResults = []
-                        selectedSymbol = result.symbol
-                        symbol = result.symbol
-                    }) {
-                        HStack {
-                            Text(result.symbol)
-                                .fontWeight(.semibold)
-                            Text(result.name)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
+                        searchTask = Task {
+                            try? await Task.sleep(nanoseconds: 300_000_000)
+                            guard !Task.isCancelled else { return }
+                            searchResults = await stockService.search(query: newValue)
                         }
                     }
-                    .buttonStyle(.plain)
+
+                if !searchResults.isEmpty {
+                    List(searchResults.prefix(5)) { result in
+                        Button(action: {
+                            searchTask?.cancel()
+                            selectedSymbol = result.symbol
+                            searchResults = []
+                        }) {
+                            HStack {
+                                Text(result.symbol)
+                                    .fontWeight(.semibold)
+                                Text(result.name)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .listStyle(.plain)
+                    .frame(height: min(CGFloat(searchResults.prefix(5).count) * 30, 150))
                 }
-                .listStyle(.plain)
-                .frame(height: min(CGFloat(searchResults.prefix(5).count) * 30, 150))
             }
 
             // Quantity & price
@@ -102,7 +116,7 @@ struct AddHoldingView: View {
             .disabled(selectedSymbol == nil || quantityText.isEmpty || avgPriceText.isEmpty)
             .padding()
         }
-        .frame(width: 340, height: 350)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func addHolding() {
@@ -115,6 +129,6 @@ struct AddHoldingView: View {
         Task {
             await stockService.fetchQuotes(symbols: [sym])
         }
-        dismiss()
+        isPresented = nil
     }
 }

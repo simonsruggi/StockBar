@@ -5,16 +5,50 @@ enum Tab: String, CaseIterable {
     case portfolios = "Portafogli"
 }
 
+// Environment keys for navigation from child views
+struct AddHoldingAction {
+    let perform: (UUID) -> Void
+}
+
+struct EditHoldingAction {
+    let perform: (UUID, Holding) -> Void
+}
+
+private struct AddHoldingActionKey: EnvironmentKey {
+    static let defaultValue = AddHoldingAction { _ in }
+}
+
+private struct EditHoldingActionKey: EnvironmentKey {
+    static let defaultValue = EditHoldingAction { _, _ in }
+}
+
+extension EnvironmentValues {
+    var addHoldingAction: AddHoldingAction {
+        get { self[AddHoldingActionKey.self] }
+        set { self[AddHoldingActionKey.self] = newValue }
+    }
+    var editHoldingAction: EditHoldingAction {
+        get { self[EditHoldingActionKey.self] }
+        set { self[EditHoldingActionKey.self] = newValue }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @State private var selectedTab: Tab = .watchlist
     @State private var showSearch = false
+    @State private var addHoldingPortfolioId: UUID?
+    @State private var editHolding: (portfolioId: UUID, holding: Holding)?
 
     var body: some View {
         Group {
             if showSearch {
                 SearchView(mode: .watchlist, isPresented: $showSearch)
+            } else if let portfolioId = addHoldingPortfolioId {
+                AddHoldingView(portfolioId: portfolioId, isPresented: $addHoldingPortfolioId)
+            } else if let edit = editHolding {
+                EditHoldingView(portfolioId: edit.portfolioId, holding: edit.holding, isPresented: $editHolding)
             } else {
                 mainContent
             }
@@ -22,6 +56,8 @@ struct ContentView: View {
         .frame(width: 380, height: 520)
         .onReceive(NotificationCenter.default.publisher(for: .popoverDidClose)) { _ in
             showSearch = false
+            addHoldingPortfolioId = nil
+            editHolding = nil
         }
     }
 
@@ -87,5 +123,11 @@ struct ContentView: View {
                 PortfolioListView()
             }
         }
+        .environment(\.addHoldingAction, AddHoldingAction { portfolioId in
+            addHoldingPortfolioId = portfolioId
+        })
+        .environment(\.editHoldingAction, EditHoldingAction { portfolioId, holding in
+            editHolding = (portfolioId, holding)
+        })
     }
 }
