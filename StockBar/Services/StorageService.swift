@@ -80,6 +80,10 @@ class StorageService: ObservableObject {
         portfolios.remove(atOffsets: offsets)
     }
 
+    func deletePortfolio(id: UUID) {
+        portfolios.removeAll { $0.id == id }
+    }
+
     func addHolding(to portfolioId: UUID, symbol: String, quantity: Double, avgPrice: Double) {
         guard let index = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
         let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice)

@@ -4,12 +4,22 @@ struct WatchlistView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @Binding var showSearch: Bool
+    @State private var searchText = ""
 
     var sortedSymbols: [String] {
         storageService.watchlist.sorted { a, b in
             let pctA = stockService.quotes[a]?.changePercent ?? 0
             let pctB = stockService.quotes[b]?.changePercent ?? 0
             return pctA > pctB
+        }
+    }
+
+    var filteredSymbols: [String] {
+        guard !searchText.isEmpty else { return sortedSymbols }
+        let query = searchText.lowercased()
+        return sortedSymbols.filter { symbol in
+            symbol.lowercased().contains(query) ||
+            (stockService.quotes[symbol]?.name.lowercased().contains(query) ?? false)
         }
     }
 
@@ -31,8 +41,30 @@ struct WatchlistView: View {
             }
         } else {
             VStack(spacing: 0) {
+            // Search bar
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+                TextField("Filter watchlist…", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.caption)
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+
+            Divider()
+
             List {
-                ForEach(sortedSymbols, id: \.self) { symbol in
+                ForEach(filteredSymbols, id: \.self) { symbol in
                     if let quote = stockService.quotes[symbol] {
                         QuoteRow(quote: quote)
                             .contextMenu {

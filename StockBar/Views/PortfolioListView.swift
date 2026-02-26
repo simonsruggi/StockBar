@@ -5,6 +5,16 @@ struct PortfolioListView: View {
     @EnvironmentObject var storageService: StorageService
     @State private var showNewPortfolio = false
     @State private var newPortfolioName = ""
+    @State private var searchText = ""
+
+    var filteredPortfolios: [Portfolio] {
+        guard !searchText.isEmpty else { return storageService.portfolios }
+        let query = searchText.lowercased()
+        return storageService.portfolios.filter { portfolio in
+            portfolio.name.lowercased().contains(query) ||
+            portfolio.holdings.contains { $0.symbol.lowercased().contains(query) }
+        }
+    }
 
     var body: some View {
         if storageService.portfolios.isEmpty && !showNewPortfolio {
@@ -24,6 +34,28 @@ struct PortfolioListView: View {
             }
         } else {
             VStack(spacing: 0) {
+                // Search bar
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                    TextField("Filter portfolios…", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                    if !searchText.isEmpty {
+                        Button(action: { searchText = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+
+                Divider()
+
                 List {
                     if showNewPortfolio {
                         HStack {
@@ -42,7 +74,7 @@ struct PortfolioListView: View {
                         .padding(.vertical, 4)
                     }
 
-                    ForEach(storageService.portfolios) { portfolio in
+                    ForEach(filteredPortfolios) { portfolio in
                         PortfolioSection(portfolio: portfolio)
                     }
                     .onDelete { offsets in
@@ -185,16 +217,25 @@ struct PortfolioSection: View {
                         .disabled(renameText.isEmpty)
                 }
             } else {
-                Text(portfolio.name)
-                    .font(.headline)
-                    .contextMenu {
-                        Button {
-                            renameText = portfolio.name
-                            isRenaming = true
-                        } label: {
-                            Label("Rename", systemImage: "pencil")
-                        }
+                HStack {
+                    Text(portfolio.name)
+                        .font(.headline)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+                .contextMenu {
+                    Button {
+                        renameText = portfolio.name
+                        isRenaming = true
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
                     }
+                    Button(role: .destructive) {
+                        storageService.deletePortfolio(id: portfolio.id)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
             }
         }
     }
