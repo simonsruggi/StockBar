@@ -10,6 +10,7 @@ struct AddHoldingView: View {
     @State private var searchText = ""
     @State private var quantityText = ""
     @State private var avgPriceText = ""
+    @State private var purchaseDate = Date()
     @State private var searchResults: [SearchResult] = []
     @State private var selectedSymbol: String?
     @State private var searchTask: Task<Void, Never>?
@@ -107,6 +108,16 @@ struct AddHoldingView: View {
             }
             .padding(.horizontal)
 
+            VStack(alignment: .leading) {
+                Text("Purchase date")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                DatePicker("", selection: $purchaseDate, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+            }
+            .padding(.horizontal)
+
             Spacer()
 
             Button("Add") {
@@ -125,9 +136,9 @@ struct AddHoldingView: View {
               let price = Double(avgPriceText.replacingOccurrences(of: ",", with: "."))
         else { return }
 
-        storageService.addHolding(to: portfolioId, symbol: sym, quantity: qty, avgPrice: price)
+        storageService.addHolding(to: portfolioId, symbol: sym, quantity: qty, avgPrice: price, purchaseDate: purchaseDate)
         Task {
-            await stockService.fetchQuotes(symbols: [sym])
+            await stockService.refreshAll(storageService: storageService)
         }
         isPresented = nil
     }

@@ -99,12 +99,15 @@ struct Holding: Identifiable, Codable {
     var symbol: String
     var quantity: Double
     var avgPrice: Double
+    /// Purchase date for historical exchange rate in cost basis calculation
+    var purchaseDate: Date?
 
-    init(id: UUID = UUID(), symbol: String, quantity: Double, avgPrice: Double) {
+    init(id: UUID = UUID(), symbol: String, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil) {
         self.id = id
         self.symbol = symbol
         self.quantity = quantity
         self.avgPrice = avgPrice
+        self.purchaseDate = purchaseDate
     }
 
     func pnl(currentPrice: Double) -> Double {

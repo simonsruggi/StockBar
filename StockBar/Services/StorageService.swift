@@ -84,9 +84,9 @@ class StorageService: ObservableObject {
         portfolios.removeAll { $0.id == id }
     }
 
-    func addHolding(to portfolioId: UUID, symbol: String, quantity: Double, avgPrice: Double) {
+    func addHolding(to portfolioId: UUID, symbol: String, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil) {
         guard let index = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
-        let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice)
+        let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice, purchaseDate: purchaseDate)
         portfolios[index].holdings.append(holding)
     }
 
@@ -95,12 +95,13 @@ class StorageService: ObservableObject {
         portfolios[pIndex].holdings.removeAll { $0.id == holdingId }
     }
 
-    func updateHolding(in portfolioId: UUID, holdingId: UUID, quantity: Double, avgPrice: Double) {
+    func updateHolding(in portfolioId: UUID, holdingId: UUID, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil) {
         guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
               let hIndex = portfolios[pIndex].holdings.firstIndex(where: { $0.id == holdingId })
         else { return }
         portfolios[pIndex].holdings[hIndex].quantity = quantity
         portfolios[pIndex].holdings[hIndex].avgPrice = avgPrice
+        portfolios[pIndex].holdings[hIndex].purchaseDate = purchaseDate
     }
 
     // MARK: - Persistence

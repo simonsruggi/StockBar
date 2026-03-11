@@ -137,7 +137,7 @@ struct PortfolioSection: View {
     var totalCost: Double {
         portfolio.holdings.reduce(0) { sum, holding in
             guard let quote = stockService.quotes[holding.symbol] else { return sum }
-            let rate = stockService.rate(from: quote.currency)
+            let rate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
             return sum + (holding.avgPrice * holding.quantity) * rate
         }
     }
@@ -336,6 +336,7 @@ struct HoldingRow: View {
 }
 
 struct EditHoldingView: View {
+    @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
 
     let portfolioId: UUID
@@ -344,6 +345,7 @@ struct EditHoldingView: View {
 
     @State private var quantityText: String
     @State private var avgPriceText: String
+    @State private var purchaseDate: Date
 
     init(portfolioId: UUID, holding: Holding, isPresented: Binding<(portfolioId: UUID, holding: Holding)?>) {
         self.portfolioId = portfolioId
@@ -351,6 +353,7 @@ struct EditHoldingView: View {
         self._isPresented = isPresented
         _quantityText = State(initialValue: String(format: "%.2f", holding.quantity))
         _avgPriceText = State(initialValue: String(format: "%.2f", holding.avgPrice))
+        _purchaseDate = State(initialValue: holding.purchaseDate ?? Date())
     }
 
     var body: some View {
@@ -383,6 +386,16 @@ struct EditHoldingView: View {
             }
             .padding(.horizontal)
 
+            VStack(alignment: .leading) {
+                Text("Purchase date")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                DatePicker("", selection: $purchaseDate, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+            }
+            .padding(.horizontal)
+
             Spacer()
 
             Button("Save") {
@@ -399,7 +412,10 @@ struct EditHoldingView: View {
         guard let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
               let price = Double(avgPriceText.replacingOccurrences(of: ",", with: "."))
         else { return }
-        storageService.updateHolding(in: portfolioId, holdingId: holding.id, quantity: qty, avgPrice: price)
+        storageService.updateHolding(in: portfolioId, holdingId: holding.id, quantity: qty, avgPrice: price, purchaseDate: purchaseDate)
+        Task {
+            await stockService.refreshAll(storageService: storageService)
+        }
         isPresented = nil
     }
 }

@@ -6,7 +6,8 @@ class StockService: ObservableObject {
 
     @Published var quotes: [String: StockQuote] = [:]
     @Published var isLoading = false
-    @Published var exchangeRates: [String: Double] = [:]  // e.g. "USD" -> 0.92 (rate to preferred currency)
+    @Published var exchangeRates: [String: Double] = [:]  // e.g. "USDEUR" -> 0.92 (rate to preferred currency)
+    @Published var historicalRates: [String: Double] = [:]  // e.g. "USDEUR:1704067200" -> 0.9045 (rate at date)
 
     private let session: URLSession
     private var crumb: String?
@@ -57,6 +58,33 @@ class StockService: ObservableObject {
                 let to = String(parts[1])
                 group.addTask { [weak self] in
                     await self?.fetchExchangeRate(from: from, to: to)
+                }
+            }
+        }
+
+        // Fetch historical rates for holdings with purchase date
+        var historicalKeys = Set<String>()
+        for portfolio in storageService.portfolios {
+            for holding in portfolio.holdings {
+                guard let purchaseDate = holding.purchaseDate,
+                      let quote = quotes[holding.symbol],
+                      quote.currency != preferredCurrency
+                else { continue }
+                let dayStart = Calendar.current.startOfDay(for: purchaseDate)
+                let ts = Int(dayStart.timeIntervalSince1970)
+                historicalKeys.insert("\(quote.currency)|\(preferredCurrency)|\(ts)")
+            }
+        }
+        await withTaskGroup(of: Void.self) { group in
+            for key in historicalKeys {
+                let parts = key.split(separator: "|")
+                guard parts.count == 3,
+                      let ts = Int(parts[2])
+                else { continue }
+                let from = String(parts[0])
+                let to = String(parts[1])
+                group.addTask { [weak self] in
+                    await self?.fetchHistoricalExchangeRate(from: from, to: to, dateTimestamp: ts)
                 }
             }
         }
@@ -278,9 +306,15 @@ class StockService: ObservableObject {
         }
     }
 
-    func rate(from currency: String) -> Double {
+    func rate(from currency: String, for purchaseDate: Date? = nil) -> Double {
         let preferred = StorageService.shared.preferredCurrency
         if currency == preferred { return 1.0 }
+        if let date = purchaseDate {
+            let dayStart = Calendar.current.startOfDay(for: date)
+            let ts = Int(dayStart.timeIntervalSince1970)
+            let key = "\(currency)\(preferred):\(ts)"
+            if let historical = historicalRates[key] { return historical }
+        }
         return exchangeRates["\(currency)\(preferred)"] ?? 1.0
     }
 
@@ -303,6 +337,28 @@ class StockService: ObservableObject {
             }
         } catch {
             print("Error fetching exchange rate \(from)\(to): \(error)")
+        }
+    }
+
+    private func fetchHistoricalExchangeRate(from: String, to: String, dateTimestamp: Int) async {
+        let symbol = "\(from)\(to)=X"
+        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
+        let period1 = dateTimestamp
+        let period2 = dateTimestamp + 86400
+        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&period1=\(period1)&period2=\(period2)") else { return }
+
+        do {
+            let (data, _) = try await session.data(from: url)
+            let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
+            guard let result = response.chart.result?.first,
+                  let closes = result.indicators?.quote?.first?.close,
+                  !closes.isEmpty
+            else { return }
+            let validCloses = closes.compactMap { $0 }
+            guard let rate = validCloses.first ?? validCloses.last else { return }
+            historicalRates["\(from)\(to):\(dateTimestamp)"] = rate
+        } catch {
+            print("Error fetching historical rate \(from)\(to) for \(dateTimestamp): \(error)")
         }
     }
 
