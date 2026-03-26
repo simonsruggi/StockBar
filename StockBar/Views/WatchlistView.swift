@@ -92,7 +92,10 @@ struct WatchlistView: View {
                     }
                 }
                 .onDelete { offsets in
-                    let symbols = offsets.map { storageService.watchlist[$0] }
+                    let currentList = filteredSymbols
+                    let symbols = offsets.compactMap { idx in
+                        idx < currentList.count ? currentList[idx] : nil
+                    }
                     symbols.forEach { storageService.removeFromWatchlist($0) }
                 }
                 .onMove { source, destination in

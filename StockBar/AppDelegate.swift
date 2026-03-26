@@ -14,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var tickerIndex = 0
     private var eventMonitor: Any?
+    private var isRefreshing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon
@@ -42,12 +43,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             updateMenuBarTitle()
         }
 
-        // Refresh every 5 seconds
+        // Refresh every 5 seconds (skip if previous refresh still running)
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, !self.isRefreshing else { return }
+                self.isRefreshing = true
                 await self.stockService.refreshAll(storageService: self.storageService)
                 self.updateMenuBarTitle()
+                self.isRefreshing = false
             }
         }
     }

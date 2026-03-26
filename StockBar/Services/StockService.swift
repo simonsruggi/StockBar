@@ -362,6 +362,19 @@ class StockService: ObservableObject {
         }
     }
 
+    /// Ensures historical rate is loaded for a holding (e.g. when opening edit view)
+    func ensureHistoricalRate(for holding: Holding) async {
+        guard let purchaseDate = holding.purchaseDate,
+              let quote = quotes[holding.symbol],
+              quote.currency != StorageService.shared.preferredCurrency
+        else { return }
+        let dayStart = Calendar.current.startOfDay(for: purchaseDate)
+        let ts = Int(dayStart.timeIntervalSince1970)
+        let key = "\(quote.currency)\(StorageService.shared.preferredCurrency):\(ts)"
+        guard historicalRates[key] == nil else { return }
+        await fetchHistoricalExchangeRate(from: quote.currency, to: StorageService.shared.preferredCurrency, dateTimestamp: ts)
+    }
+
     func search(query: String) async -> [SearchResult] {
         guard !query.isEmpty else { return [] }
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query

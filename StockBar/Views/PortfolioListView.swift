@@ -78,7 +78,11 @@ struct PortfolioListView: View {
                         PortfolioSection(portfolio: portfolio)
                     }
                     .onDelete { offsets in
-                        storageService.deletePortfolio(at: offsets)
+                        let currentList = filteredPortfolios
+                        let ids = offsets.compactMap { idx in
+                            idx < currentList.count ? currentList[idx].id : nil
+                        }
+                        ids.forEach { storageService.deletePortfolio(id: $0) }
                     }
                 }
                 .listStyle(.plain)
@@ -356,6 +360,17 @@ struct EditHoldingView: View {
         _purchaseDate = State(initialValue: holding.purchaseDate ?? Date())
     }
 
+    private var costBasisInfo: (costInStock: Double, rate: Double, costInPreferred: Double)? {
+        guard let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
+              let price = Double(avgPriceText.replacingOccurrences(of: ",", with: ".")),
+              let quote = stockService.quotes[holding.symbol],
+              qty > 0, price > 0
+        else { return nil }
+        let costInStock = price * qty
+        let rate = stockService.rate(from: quote.currency, for: purchaseDate)
+        return (costInStock, rate, costInStock * rate)
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             HStack {
@@ -396,6 +411,16 @@ struct EditHoldingView: View {
             }
             .padding(.horizontal)
 
+            if let quote = stockService.quotes[holding.symbol], quote.currency != storageService.preferredCurrency, let info = costBasisInfo {
+                let stockSym = StorageService.currencySymbol(for: quote.currency)
+                let prefSym = StorageService.currencySymbol(for: storageService.preferredCurrency)
+                let dateStr = dateFormatter.string(from: purchaseDate)
+                Text("Cost basis: \(String(format: "%.2f", info.costInPreferred))\(prefSym) (\(String(format: "%.2f", info.costInStock))\(stockSym) × \(String(format: "%.4f", info.rate)) on \(dateStr))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+            }
+
             Spacer()
 
             Button("Save") {
@@ -406,6 +431,22 @@ struct EditHoldingView: View {
             .padding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            Task {
+                await stockService.ensureHistoricalRate(for: Holding(id: holding.id, symbol: holding.symbol, quantity: holding.quantity, avgPrice: holding.avgPrice, purchaseDate: purchaseDate))
+            }
+        }
+        .onChange(of: purchaseDate) { _, _ in
+            Task {
+                await stockService.ensureHistoricalRate(for: Holding(id: holding.id, symbol: holding.symbol, quantity: Double(quantityText.replacingOccurrences(of: ",", with: ".")) ?? 0, avgPrice: Double(avgPriceText.replacingOccurrences(of: ",", with: ".")) ?? 0, purchaseDate: purchaseDate))
+            }
+        }
+    }
+
+    private var dateFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f
     }
 
     private func save() {
