@@ -4,7 +4,7 @@ App macOS per la menu bar che mostra in tempo reale le quotazioni di borsa e il 
 
 ## Descrizione
 
-StockBar è un'app leggera che vive nella menu bar di macOS. Con un click sull'icona si apre un popover con watchlist, portafogli e impostazioni. I prezzi si aggiornano ogni 5 secondi automaticamente.
+StockBar è un'app leggera che vive nella menu bar di macOS. Con un click sull'icona si apre un popover con watchlist, portafogli e impostazioni. I prezzi si aggiornano in tempo reale via WebSocket (~1 update/sec per simbolo).
 
 ## Stack tecnologico
 
@@ -12,8 +12,9 @@ StockBar è un'app leggera che vive nella menu bar di macOS. Con un click sull'i
 - **UI**: SwiftUI
 - **Piattaforma**: macOS 14+ (Sonoma)
 - **Build system**: Swift Package Manager (`Package.swift`)
-- **Dati**: Yahoo Finance API (v7 batch quotes + v8 chart come fallback)
-- **Dipendenze esterne**: nessuna
+- **Dati real-time**: Yahoo Finance WebSocket (`wss://streamer.finance.yahoo.com`) via protobuf
+- **Dati fallback**: Yahoo Finance REST API (v7 batch quotes + v8 chart)
+- **Dipendenze**: [apple/swift-protobuf](https://github.com/apple/swift-protobuf) (decodifica messaggi WSS)
 
 ## Struttura cartelle principali
 
@@ -26,8 +27,10 @@ StockBar/
 │   ├── Models/
 │   │   └── StockQuote.swift    # Modelli: StockQuote, Portfolio, Holding, SearchResult
 │   ├── Services/
-│   │   ├── StockService.swift  # Fetch quotazioni e tassi di cambio da Yahoo Finance
-│   │   └── StorageService.swift# Persistenza locale (JSON in Application Support)
+│   │   ├── StockService.swift      # Fetch quotazioni e tassi di cambio da Yahoo Finance REST
+│   │   ├── WebSocketService.swift  # Streaming real-time via WSS + protobuf + auto-reconnect
+│   │   ├── yaticker.pb.swift       # Codice Swift generato da yaticker.proto
+│   │   └── StorageService.swift    # Persistenza locale (JSON in Application Support)
 │   ├── Views/
 │   │   ├── ContentView.swift   # Contenitore con tab (Watchlist / Portfolios / Settings)
 │   │   ├── WatchlistView.swift # Lista ticker con prezzi e variazione giornaliera
@@ -76,9 +79,18 @@ swift run
 
 L'app non compare nel Dock (`.accessory` policy): l'icona appare nella menu bar in alto a destra.
 
+## Architettura dati
+
+- **WebSocket (primario)**: `WebSocketService` si connette a `wss://streamer.finance.yahoo.com/?version=2`, riceve tick in formato JSON-wrapped base64 protobuf. I tick vengono bufferizzati e flushati in batch 1 volta al secondo per evitare SwiftUI redraw eccessivi.
+- **REST polling (secondario)**: ogni 5 min per exchange rates (correnti e storici). Usato anche come bootstrap iniziale e fallback se il WSS cade.
+- **Cache eviction**: ad ogni refresh REST, vengono rimossi quotes, exchange rates e historical rates non più necessari.
+- **Sleep/Wake**: il WSS si disconnette su system sleep e si riconnette al wake con refresh immediato.
+- **Auto-reconnect**: backoff esponenziale (2s, 4s, 8s... max 120s) in caso di disconnessione WSS.
+
 ## Note importanti
 
 - **Nessuna API key richiesta**: Yahoo Finance non richiede autenticazione, ma usa un meccanismo cookie+crumb gestito automaticamente dal `StockService`
 - **Fallback API**: se la v7 batch quote fallisce, viene usata la v8 chart API per ogni simbolo singolarmente
+- **Protobuf**: lo schema `yaticker.proto` nella root genera `yaticker.pb.swift` via `protoc --swift_out`. Rigenerare se cambia lo schema: `protoc --swift_out=StockBar/Services/ yaticker.proto`
 - **Requisiti**: Xcode 15+ e macOS 14 Sonoma o successivo
 - **Firma/Entitlements**: `StockBar.entitlements` presente nella root per eventuali accessi di rete
