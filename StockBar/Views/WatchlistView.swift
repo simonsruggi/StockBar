@@ -5,6 +5,7 @@ struct WatchlistView: View {
     @EnvironmentObject var storageService: StorageService
     @Binding var showSearch: Bool
     @State private var searchText = ""
+    @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
 
     var sortedSymbols: [String] {
         storageService.watchlist.sorted { a, b in
@@ -68,11 +69,7 @@ struct WatchlistView: View {
                     if let quote = stockService.quotes[symbol] {
                         QuoteRow(quote: quote)
                             .contextMenu {
-                                Button(role: .destructive) {
-                                    storageService.removeFromWatchlist(symbol)
-                                } label: {
-                                    Label("Remove", systemImage: "trash")
-                                }
+                                watchlistContextMenu(symbol: symbol)
                             }
                     } else {
                         HStack {
@@ -83,11 +80,7 @@ struct WatchlistView: View {
                                 .scaleEffect(0.6)
                         }
                         .contextMenu {
-                            Button(role: .destructive) {
-                                storageService.removeFromWatchlist(symbol)
-                            } label: {
-                                Label("Remove", systemImage: "trash")
-                            }
+                            watchlistContextMenu(symbol: symbol)
                         }
                     }
                 }
@@ -115,6 +108,114 @@ struct WatchlistView: View {
             }
             .buttonStyle(.borderless)
             .padding(8)
+            }
+            .sheet(item: Binding<AddToPortfolioItem?>(
+                get: {
+                    if let atp = addToPortfolio {
+                        return AddToPortfolioItem(symbol: atp.symbol, portfolioId: atp.portfolioId)
+                    }
+                    return nil
+                },
+                set: { addToPortfolio = $0.map { ($0.symbol, $0.portfolioId) } }
+            )) { item in
+                QuickAddHoldingView(symbol: item.symbol, portfolioId: item.portfolioId) {
+                    addToPortfolio = nil
+                }
+                .environmentObject(stockService)
+                .environmentObject(storageService)
+                .frame(width: 300, height: 220)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func watchlistContextMenu(symbol: String) -> some View {
+        if !storageService.portfolios.isEmpty {
+            Menu {
+                ForEach(storageService.portfolios) { portfolio in
+                    Button(portfolio.name) {
+                        addToPortfolio = (symbol, portfolio.id)
+                    }
+                }
+            } label: {
+                Label("Add to Portfolio", systemImage: "plus.rectangle.on.folder")
+            }
+            Divider()
+        }
+        Button(role: .destructive) {
+            storageService.removeFromWatchlist(symbol)
+        } label: {
+            Label("Remove from Watchlist", systemImage: "trash")
+        }
+    }
+}
+
+private struct AddToPortfolioItem: Identifiable {
+    let symbol: String
+    let portfolioId: UUID
+    var id: String { "\(symbol)-\(portfolioId)" }
+}
+
+struct QuickAddHoldingView: View {
+    @EnvironmentObject var stockService: StockService
+    @EnvironmentObject var storageService: StorageService
+
+    let symbol: String
+    let portfolioId: UUID
+    let onDismiss: () -> Void
+
+    @State private var quantityText = ""
+    @State private var avgPriceText = ""
+    @State private var purchaseDate = Date()
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Add \(symbol)")
+                    .font(.headline)
+                Spacer()
+                Button("Cancel") { onDismiss() }
+                    .buttonStyle(.borderless)
+            }
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading) {
+                    Text("Quantity").font(.caption).foregroundColor(.secondary)
+                    TextField("0", text: $quantityText)
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading) {
+                    Text("Avg price").font(.caption).foregroundColor(.secondary)
+                    TextField("0.00", text: $avgPriceText)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            VStack(alignment: .leading) {
+                Text("Purchase date").font(.caption).foregroundColor(.secondary)
+                DatePicker("", selection: $purchaseDate, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+            }
+
+            Spacer()
+
+            Button("Add") {
+                guard let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
+                      let price = Double(avgPriceText.replacingOccurrences(of: ",", with: "."))
+                else { return }
+                storageService.addHolding(to: portfolioId, symbol: symbol, quantity: qty, avgPrice: price, purchaseDate: purchaseDate)
+                Task { await stockService.refreshAll(storageService: storageService) }
+                onDismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(quantityText.isEmpty || avgPriceText.isEmpty)
+        }
+        .padding()
+        .onAppear {
+            // Pre-fill current price
+            if let quote = stockService.quotes[symbol] {
+                avgPriceText = String(format: "%.2f", quote.price)
             }
         }
     }
