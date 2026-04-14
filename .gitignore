@@ -2,6 +2,7 @@
 .build/
 .swiftpm/
 build/
+build_output/
 DerivedData/
 
 # Xcode

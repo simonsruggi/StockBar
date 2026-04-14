@@ -22,19 +22,35 @@ class StockService: ObservableObject {
         session = URLSession(configuration: config)
     }
 
-    func refreshAll(storageService: StorageService) async {
-        var allSymbols = Set(storageService.watchlist)
+    static func collectSymbols(storageService: StorageService) -> Set<String> {
+        var syms = Set(storageService.watchlist)
         for portfolio in storageService.portfolios {
             for holding in portfolio.holdings {
-                allSymbols.insert(holding.symbol)
+                syms.insert(holding.symbol)
             }
         }
+        return syms
+    }
 
+    /// Full refresh: quotes (REST) + exchange rates. Use only at startup or when WSS is down.
+    func refreshAll(storageService: StorageService) async {
+        let allSymbols = Self.collectSymbols(storageService: storageService)
         guard !allSymbols.isEmpty else { return }
         isLoading = true
         defer { isLoading = false }
 
+        // Evict quotes for symbols no longer tracked
+        let staleKeys = Set(quotes.keys).subtracting(allSymbols)
+        for key in staleKeys { quotes.removeValue(forKey: key) }
+
         await fetchQuotes(symbols: Array(allSymbols))
+        await refreshExchangeRates(storageService: storageService)
+    }
+
+    /// Refresh only exchange rates (current + historical). Called periodically while WSS handles quotes.
+    func refreshExchangeRates(storageService: StorageService) async {
+        let allSymbols = Self.collectSymbols(storageService: storageService)
+        guard !allSymbols.isEmpty else { return }
 
         // Fetch exchange rates for all stock currencies toward both target currencies
         let preferredCurrency = storageService.preferredCurrency
@@ -51,6 +67,15 @@ class StockService: ObservableObject {
                 pairs.insert("\(quote.currency)|\(priceCurrency)")
             }
         }
+
+        // Evict exchange rates no longer needed
+        let neededRateKeys = Set(pairs.map { pair -> String in
+            let parts = pair.split(separator: "|")
+            return "\(parts[0])\(parts[1])"
+        })
+        let staleRateKeys = Set(exchangeRates.keys).subtracting(neededRateKeys)
+        for key in staleRateKeys { exchangeRates.removeValue(forKey: key) }
+
         await withTaskGroup(of: Void.self) { group in
             for pair in pairs {
                 let parts = pair.split(separator: "|")
@@ -62,8 +87,9 @@ class StockService: ObservableObject {
             }
         }
 
-        // Fetch historical rates for holdings with purchase date
-        var historicalKeys = Set<String>()
+        // Fetch historical rates for holdings with purchase date — skip if already cached
+        var neededHistoricalKeys = Set<String>()
+        var historicalKeysToFetch = Set<String>()
         for portfolio in storageService.portfolios {
             for holding in portfolio.holdings {
                 guard let purchaseDate = holding.purchaseDate,
@@ -72,11 +98,20 @@ class StockService: ObservableObject {
                 else { continue }
                 let dayStart = Calendar.current.startOfDay(for: purchaseDate)
                 let ts = Int(dayStart.timeIntervalSince1970)
-                historicalKeys.insert("\(quote.currency)|\(preferredCurrency)|\(ts)")
+                let cacheKey = "\(quote.currency)\(preferredCurrency):\(ts)"
+                neededHistoricalKeys.insert(cacheKey)
+                if historicalRates[cacheKey] == nil {
+                    historicalKeysToFetch.insert("\(quote.currency)|\(preferredCurrency)|\(ts)")
+                }
             }
         }
+
+        // Evict historical rates no longer needed
+        let staleHistKeys = Set(historicalRates.keys).subtracting(neededHistoricalKeys)
+        for key in staleHistKeys { historicalRates.removeValue(forKey: key) }
+
         await withTaskGroup(of: Void.self) { group in
-            for key in historicalKeys {
+            for key in historicalKeysToFetch {
                 let parts = key.split(separator: "|")
                 guard parts.count == 3,
                       let ts = Int(parts[2])
@@ -373,6 +408,46 @@ class StockService: ObservableObject {
         let key = "\(quote.currency)\(StorageService.shared.preferredCurrency):\(ts)"
         guard historicalRates[key] == nil else { return }
         await fetchHistoricalExchangeRate(from: quote.currency, to: StorageService.shared.preferredCurrency, dateTimestamp: ts)
+    }
+
+    /// Update a quote from a WebSocket tick. Returns true if the quote was meaningful.
+    func applyTick(_ ticker: Yaticker) -> Bool {
+        let symbol = ticker.id
+        guard !symbol.isEmpty, ticker.price > 0 else { return false }
+
+        let existing = quotes[symbol]
+
+        let marketState: String
+        switch ticker.marketHours {
+        case .preMarket: marketState = "PRE"
+        case .postMarket, .extendedHoursMarket: marketState = "POST"
+        case .regularMarket: marketState = "REGULAR"
+        default: marketState = existing?.marketState ?? "CLOSED"
+        }
+
+        let price = Double(ticker.price)
+        let change = Double(ticker.change)
+        let changePercent = Double(ticker.changePercent)
+
+        // Keep extended hours data from existing quote if WSS doesn't provide it
+        let quote = StockQuote(
+            symbol: symbol,
+            name: existing?.name ?? ticker.shortName,
+            price: price,
+            change: change,
+            changePercent: changePercent,
+            currency: ticker.currency.isEmpty ? (existing?.currency ?? "USD") : ticker.currency,
+            marketState: marketState,
+            preMarketPrice: marketState == "PRE" ? price : existing?.preMarketPrice,
+            preMarketChange: marketState == "PRE" ? change : existing?.preMarketChange,
+            preMarketChangePercent: marketState == "PRE" ? changePercent : existing?.preMarketChangePercent,
+            postMarketPrice: marketState == "POST" ? price : existing?.postMarketPrice,
+            postMarketChange: marketState == "POST" ? change : existing?.postMarketChange,
+            postMarketChangePercent: marketState == "POST" ? changePercent : existing?.postMarketChangePercent
+        )
+
+        quotes[symbol] = quote
+        return true
     }
 
     func search(query: String) async -> [SearchResult] {
