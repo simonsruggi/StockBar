@@ -54,7 +54,7 @@ The app runs in the menu bar — look for the chart icon (or your chosen display
 
 ### Watchlist
 
-Add stocks by clicking **Add stock** at the bottom of the Watchlist tab. Search by symbol or company name (e.g. `AAPL`, `Tesla`). Stocks show:
+Add stocks by clicking **Add stock** at the bottom of the Watchlist tab. Search by symbol, company name, or ISIN (e.g. `AAPL`, `Tesla`, `IE00B4L5Y983`). Search results show live price and currency. Stocks show:
 
 - Current price with currency symbol
 - Daily change (absolute and percentage)

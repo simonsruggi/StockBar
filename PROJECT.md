@@ -46,11 +46,12 @@ StockBar/
 ## Funzionalità chiave
 
 - **Menu bar configurabile**: P&L assoluto, P&L %, P&L + %, valore totale portafoglio, miglior/peggior titolo watchlist, solo icona
-- **Watchlist**: aggiunta titoli per simbolo con ricerca live, prezzi in valuta originale o convertiti, badge PRE/POST per extended hours
+- **Watchlist**: aggiunta titoli per simbolo, nome o ISIN con ricerca live; prezzi in valuta originale o convertiti; badge PRE/POST per extended hours; filtro locale per nome, simbolo o ISIN
 - **Portafogli multipli**: prezzo medio di carico, data acquisto per tasso di cambio storico, P&L per holding e totale
 - **Conversione valuta**: supporta EUR, USD, GBP, CHF, JPY, CAD, AUD; tassi di cambio live e storici
 - **Extended hours**: prezzi pre-market e after-hours con rispettivo P&L
-- **Persistenza**: dati salvati in `~/Library/Application Support/StockBar/data.json`; nessun dato inviato a server esterni
+- **Persistenza**: dati salvati in `~/Library/Application Support/StockBar/data.json` (watchlist, portafogli, isinMap, preferenze); nessun dato inviato a server esterni
+- **Menu bar reattiva**: si aggiorna immediatamente ad ogni modifica di portafoglio, impostazioni o chiusura popover (oltre ai tick WebSocket e REST polling)
 
 ## Come buildare e avviare
 
