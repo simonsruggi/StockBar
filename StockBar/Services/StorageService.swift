@@ -29,6 +29,15 @@ class StorageService: ObservableObject {
         didSet { save() }
     }
 
+    /// Maps symbol → ISIN for watchlist filtering
+    @Published var isinMap: [String: String] = [:] {
+        didSet { save() }
+    }
+
+    func setISIN(_ isin: String, for symbol: String) {
+        isinMap[symbol] = isin
+    }
+
     static let supportedCurrencies = ["EUR", "USD", "GBP", "CHF", "JPY", "CAD", "AUD"]
 
     static func currencySymbol(for code: String) -> String {
@@ -113,10 +122,11 @@ class StorageService: ObservableObject {
         var stockPriceCurrency: String?
         var showExtendedHours: Bool?
         var menuBarDisplay: String?
+        var isinMap: [String: String]?
     }
 
     private func save() {
-        let data = AppData(watchlist: watchlist, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay)
+        let data = AppData(watchlist: watchlist, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -136,6 +146,7 @@ class StorageService: ObservableObject {
             stockPriceCurrency = decoded.stockPriceCurrency ?? ""
             showExtendedHours = decoded.showExtendedHours ?? true
             menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
+            isinMap = decoded.isinMap ?? [:]
         } catch {
             print("Error loading data: \(error)")
         }

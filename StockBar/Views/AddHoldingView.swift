@@ -50,7 +50,7 @@ struct AddHoldingView: View {
                 .cornerRadius(8)
                 .padding(.horizontal)
             } else {
-                TextField("Search symbol (e.g. AAPL)", text: $searchText)
+                TextField("Symbol, name or ISIN (e.g. AAPL, IE00B4L5Y983)", text: $searchText)
                     .textFieldStyle(.roundedBorder)
                     .padding(.horizontal)
                     .onChange(of: searchText) { _, newValue in

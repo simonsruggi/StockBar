@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 extension Notification.Name {
@@ -18,6 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var isRefreshing = false
     private var pendingTicks: [Yaticker] = []
     private var tickBatchTimer: Timer?
+    private var storageServiceObserver: AnyCancellable?
 
     /// REST polling: 5 min for exchange rates / fallback only
     private static let restPollingInterval: TimeInterval = 300
@@ -60,6 +62,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleWake),
             name: NSWorkspace.didWakeNotification, object: nil)
+
+        // Update menu bar when popover closes (user may have changed holdings/settings)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handlePopoverClosed),
+            name: .popoverDidClose, object: nil)
+
+        // Observe StorageService changes (portfolio edits, display mode, currency, etc.)
+        storageServiceObserver = storageService.objectWillChange.sink { [weak self] _ in
+            Task { @MainActor in
+                self?.updateMenuBarTitle()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -268,6 +282,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         ]
         statusItem.button?.attributedTitle = NSAttributedString(string: title, attributes: attrs)
+    }
+
+    @objc private func handlePopoverClosed() {
+        updateMenuBarTitle()
+        // Update WSS subscriptions in case symbols changed
+        webSocketService.updateSymbols(Array(collectSymbols()))
     }
 
     @objc func togglePopover() {

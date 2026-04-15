@@ -20,7 +20,8 @@ struct WatchlistView: View {
         let query = searchText.lowercased()
         return sortedSymbols.filter { symbol in
             symbol.lowercased().contains(query) ||
-            (stockService.quotes[symbol]?.name.lowercased().contains(query) ?? false)
+            (stockService.quotes[symbol]?.name.lowercased().contains(query) ?? false) ||
+            (storageService.isinMap[symbol]?.lowercased().contains(query) ?? false)
         }
     }
 
@@ -94,6 +95,7 @@ struct WatchlistView: View {
                 .onMove { source, destination in
                     storageService.moveWatchlistItem(from: source, to: destination)
                 }
+
             }
             .listStyle(.plain)
 

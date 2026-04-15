@@ -28,7 +28,7 @@ struct SearchView: View {
             }
             .padding()
 
-            TextField("Symbol or name (e.g. AAPL, Tesla)", text: $query)
+            TextField("Symbol, name or ISIN (e.g. AAPL, Tesla, IE00B4L5Y983)", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal)
                 .onChange(of: query) { _, newValue in
@@ -41,10 +41,29 @@ struct SearchView: View {
                         try? await Task.sleep(nanoseconds: 300_000_000)
                         guard !Task.isCancelled else { return }
                         isSearching = true
+                        print("[SearchView] searching for: \(newValue)")
                         let searchResults = await stockService.search(query: newValue)
+                        print("[SearchView] got \(searchResults.count) results")
+                        for r in searchResults {
+                            print("[SearchView] result: \(r.symbol) - \(r.name)")
+                        }
                         guard !Task.isCancelled else { return }
                         results = searchResults
                         isSearching = false
+                        // Fetch prices for search results
+                        let symbols = searchResults.map(\.symbol)
+                        print("[SearchView] fetching quotes for \(symbols)")
+                        if !symbols.isEmpty {
+                            await stockService.fetchQuotes(symbols: symbols)
+                            print("[SearchView] after fetch, quotes keys: \(Array(stockService.quotes.keys))")
+                            for s in symbols {
+                                if let q = stockService.quotes[s] {
+                                    print("[SearchView] \(s) -> \(q.price)")
+                                } else {
+                                    print("[SearchView] \(s) -> NO QUOTE")
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -74,6 +93,13 @@ struct SearchView: View {
                                     .lineLimit(1)
                             }
                             Spacer()
+
+                            if let quote = stockService.quotes[result.symbol] {
+                                Text("\(quote.price.formatted(.number.precision(.fractionLength(2)))) \(quote.currency)")
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(.primary)
+                            }
+
                             Text(result.exchange)
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
@@ -93,10 +119,18 @@ struct SearchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var queryLooksLikeISIN: Bool {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return q.count >= 6 && q.prefix(2).allSatisfy(\.isLetter) && q.dropFirst(2).allSatisfy { $0.isLetter || $0.isNumber }
+    }
+
     private func addResult(_ result: SearchResult) {
         switch mode {
         case .watchlist:
             storageService.addToWatchlist(result.symbol)
+            if queryLooksLikeISIN {
+                storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: result.symbol)
+            }
             isPresented = false
             Task {
                 await stockService.fetchQuotes(symbols: [result.symbol])
